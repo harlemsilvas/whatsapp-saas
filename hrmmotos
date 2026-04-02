@@ -1,0 +1,547 @@
+# ============================================================
+# CONFIGURACAO UNIFICADA - HRM MOTOS
+# Arquivo: /etc/nginx/sites-available/hrmmotos
+# ============================================================
+
+# ============================================================
+# BLOCO 1: HTTP - IP (Apps via IP direto)
+# ============================================================
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name 187.77.61.83;
+    include snippets/acme-challenge.conf;
+    root /var/www/html;
+    index index.html index.htm;
+
+    # ===== Raiz =====
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # ===== NBSHELPER =====
+    location /nbshelper/ {
+        alias /var/www/nbshelper/landing/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== GERADOR CPF =====
+    location /cpf/ {
+        alias /var/www/geradocpf/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== ML CODIGOS =====
+    location /ml/ {
+        alias /var/www/ml/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== PROCESSADOR XML =====
+    location /ProcessadorXml/ {
+        alias /var/www/processadorxml/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|xml|xsl)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== RESTAURANTE FRONTEND (Vite SPA) =====
+    location /restaurante/ {
+        alias /var/www/restaurante/frontend/dist/;
+        index index.html;
+        try_files $uri $uri/ /restaurante/index.html;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            access_log off;
+        }
+    }
+
+    # ===== RESTAURANTE API (Proxy Node.js) =====
+    location /restaurante/api {
+        rewrite ^/restaurante(/api/.*)$ $1 break;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 20M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== WHATSAPP SAAS API (Proxy Node.js :31827) =====
+    # Externo:  /wppsaas/api/*
+    # Interno:  /api/*
+    location /wppsaas/api/ {
+        proxy_pass http://127.0.0.1:31827/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== WHATSAPP SAAS ROOT (healthcheck) =====
+    # Externo:  /wppsaas/*
+    # Interno:  /*
+    location /wppsaas/ {
+        proxy_pass http://127.0.0.1:31827/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== RESTAURANTE UPLOADS =====
+    location /restaurante/uploads/ {
+        alias /var/www/restaurante/backend/public/uploads/;
+        types {
+            image/jpeg jpg jpeg jpe;
+            image/png png;
+            image/gif gif;
+            image/webp webp;
+            image/svg+xml svg svgz;
+            application/pdf pdf;
+        }
+        default_type application/octet-stream;
+        client_max_body_size 20M;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin *;
+        location ~* \.(php|pl|py|jsp|asp|sh|cgi)$ {
+            deny all;
+            return 403;
+        }
+        access_log /var/log/nginx/uploads_access.log;
+        error_log /var/log/nginx/uploads_error.log;
+    }
+
+    # ===== RESTAURANTE WEBSOCKET =====
+    location /restaurante/socket.io {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # ===== MOTOPECAS FRONTEND (Vite SPA) =====
+    location /motopecas/ {
+        alias /home/motopecas/app/frontend/dist/;
+        index index.html;
+        try_files $uri $uri/ /motopecas/index.html;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            access_log off;
+        }
+    }
+
+    # ===== MOTOPECAS ADMIN =====
+    location /motopecas/admin/ {
+        alias /home/motopecas/app/backend/admin/;
+        index index.html;
+        try_files $uri $uri/ /motopecas/admin/index.html;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== MOTOPECAS API (Proxy Node.js :5000) =====
+    location /motopecas/api/ {
+        rewrite ^/motopecas/api/(.*)$ /api/$1 break;
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== MOTOPECAS UPLOADS =====
+    location /motopecas/uploads/ {
+        alias /home/motopecas/app/backend/uploads/;
+        types {
+            image/jpeg jpg jpeg jpe;
+            image/png png;
+            image/gif gif;
+            image/webp webp;
+            image/svg+xml svg svgz;
+        }
+        default_type application/octet-stream;
+        client_max_body_size 10M;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin *;
+        location ~* \.(php|pl|py|jsp|asp|sh|cgi)$ {
+            deny all;
+            return 403;
+        }
+    }
+
+    # ===== MOTOPECAS PUBLIC (imagens fallback) =====
+    location /motopecas/public/ {
+        alias /home/motopecas/app/backend/public/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Fallback image (usado pelo admin)
+    location = /motopecas/sem-imagem.png {
+        alias /home/motopecas/app/backend/public/sem-imagem.png;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    error_page 404 /404.html;
+    location = /404.html {
+        root /var/www/html;
+        internal;
+    }
+    # ===== HEADERS DE SEGURANCA =====
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # ===== LOGS =====
+    access_log /var/log/nginx/multi_sites_access.log;
+    error_log /var/log/nginx/multi_sites_error.log;
+}
+
+# ============================================================
+# BLOCO 2: HTTPS - Dominios (Com SSL)
+# ============================================================
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+
+    server_name hrmmotos.com.br www.hrmmotos.com.br ml.hrmmotos.com.br srv1433055.hstgr.cloud;
+
+    # Certificados Let's Encrypt
+    ssl_certificate /etc/letsencrypt/live/hrmmotos.com.br/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hrmmotos.com.br/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    include snippets/acme-challenge.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root /var/www/html;
+    index index.html index.htm;
+
+    # ===== Redirect raiz para Instagram =====
+    location = / {
+        return 302 https://www.instagram.com/hrmmotos;
+    }
+
+    # ===== NBSHELPER =====
+    location /nbshelper/ {
+        alias /var/www/nbshelper/landing/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== GERADOR CPF =====
+    location /cpf/ {
+        alias /var/www/geradocpf/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== ML CODIGOS =====
+    location /ml/ {
+        alias /var/www/ml/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== PROCESSADOR XML =====
+    location /ProcessadorXml/ {
+        alias /var/www/processadorxml/;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|xml|xsl)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== RESTAURANTE FRONTEND =====
+    location /restaurante/ {
+        alias /var/www/restaurante/frontend/dist/;
+        index index.html;
+        try_files $uri $uri/ /restaurante/index.html;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            access_log off;
+        }
+    }
+
+    # ===== RESTAURANTE API =====
+    location /restaurante/api {
+        rewrite ^/restaurante(/api/.*)$ $1 break;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $https;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 20M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== WHATSAPP SAAS API (Proxy Node.js :31827) =====
+    # Externo:  /wppsaas/api/*
+    # Interno:  /api/*
+    location /wppsaas/api/ {
+        proxy_pass http://127.0.0.1:31827/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== WHATSAPP SAAS ROOT (healthcheck) =====
+    # Externo:  /wppsaas/*
+    # Interno:  /*
+    location /wppsaas/ {
+        proxy_pass http://127.0.0.1:31827/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== RESTAURANTE UPLOADS =====
+    location /restaurante/uploads/ {
+        alias /var/www/restaurante/backend/public/uploads/;
+        types {
+            image/jpeg jpg jpeg jpe;
+            image/png png;
+            image/gif gif;
+            image/webp webp;
+            image/svg+xml svg svgz;
+            application/pdf pdf;
+        }
+        default_type application/octet-stream;
+        client_max_body_size 20M;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin *;
+        location ~* \.(php|pl|py|jsp|asp|sh|cgi)$ {
+            deny all;
+            return 403;
+        }
+        access_log /var/log/nginx/uploads_access.log;
+        error_log /var/log/nginx/uploads_error.log;
+    }
+
+    # ===== RESTAURANTE WEBSOCKET =====
+    location /restaurante/socket.io {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $https;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # ===== MOTOPECAS FRONTEND (Vite SPA) =====
+    location /motopecas/ {
+        alias /home/motopecas/app/frontend/dist/;
+        index index.html;
+        try_files $uri $uri/ /motopecas/index.html;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            access_log off;
+        }
+    }
+
+    # ===== MOTOPECAS ADMIN =====
+    location /motopecas/admin/ {
+        alias /home/motopecas/app/backend/admin/;
+        index index.html;
+        try_files $uri $uri/ /motopecas/admin/index.html;
+        location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+            expires 30d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # ===== MOTOPECAS API (Proxy Node.js :5000) =====
+    location /motopecas/api/ {
+        rewrite ^/motopecas/api/(.*)$ /api/$1 break;
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # ===== MOTOPECAS UPLOADS =====
+    location /motopecas/uploads/ {
+        alias /home/motopecas/app/backend/uploads/;
+        types {
+            image/jpeg jpg jpeg jpe;
+            image/png png;
+            image/gif gif;
+            image/webp webp;
+            image/svg+xml svg svgz;
+        }
+        default_type application/octet-stream;
+        client_max_body_size 10M;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin *;
+        location ~* \.(php|pl|py|jsp|asp|sh|cgi)$ {
+            deny all;
+            return 403;
+        }
+    }
+
+    # ===== MOTOPECAS PUBLIC (imagens fallback) =====
+    location /motopecas/public/ {
+        alias /home/motopecas/app/backend/public/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Fallback image (usado pelo admin)
+    location = /motopecas/sem-imagem.png {
+        alias /home/motopecas/app/backend/public/sem-imagem.png;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    error_page 404 /404.html;
+    location = /404.html {
+        root /var/www/html;
+        internal;
+    }
+
+    # ===== HEADERS DE SEGURANCA + HSTS =====
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # ===== LOGS =====
+    access_log /var/log/nginx/multi_sites_https_access.log;
+    error_log /var/log/nginx/multi_sites_https_error.log;
+}
+
+# ============================================================
+# BLOCO 3: HTTP -> HTTPS Redirect (Dominios)
+# ============================================================
+server {
+    listen 80;
+    listen [::]:80;
+    server_name hrmmotos.com.br www.hrmmotos.com.br ml.hrmmotos.com.br srv1433055.hstgr.cloud;
+    include snippets/acme-challenge.conf;
+
+    # ===== Redirect raiz para Instagram =====
+    location = / {
+        return 302 https://www.instagram.com/hrmmotos;
+    }
+
+    # ===== Demais caminhos: redirect para HTTPS =====
+    location / {
+        return 301 https://$host$request_uri;
+    }
+
+    error_page 404 /404.html;
+    location = /404.html {
+        root /var/www/html;
+        internal;
+    }
+}
+# ===== FIM DA CONFIGURACAO =====

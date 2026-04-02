@@ -95,3 +95,30 @@ kill -9 <PID>
 ## Como parar o ngrok
 
 No terminal do ngrok, pare com `Ctrl+C`.
+
+## Status do desenvolvimento (checklist)
+
+### Feito
+
+- [x] Healthcheck: `GET /` (API respondendo)
+- [x] Webhook Meta: verificação `GET /api/webhook` (challenge)
+- [x] Webhook Meta: recebimento `POST /api/webhook`
+- [x] Tratamento de eventos `statuses` (ignora para bot)
+- [x] Persistência no Postgres: contatos e mensagens (entrada/saída)
+- [x] Fluxos por empresa (tabela `fluxos`) + fallback do MVP
+- [x] Envio WhatsApp via Graph API com log de sucesso (messageId)
+- [x] Multi-tenant por `metadata.phone_number_id` (resolve empresa)
+- [x] Fallback controlado para payloads “example” (redireciona para `MEU_TELEFONE` fora de produção)
+- [x] Logging estruturado (Winston) + error handler mais seguro
+- [x] Validação de env no boot (configurável por flags)
+- [x] Proteção simples de admin: `x-api-key` em `/api/empresas` quando `ADMIN_API_KEY` existe
+- [x] Script para validar token: `npm run verify:whatsapp`
+- [x] Script para atualizar token (env + banco): `npm run token:update`
+
+### Próximos passos (recomendado)
+
+- [ ] Token de longo prazo (produção): trocar token temporário por System User / token com expiração adequada
+- [ ] Garantir assinatura correta no App da Meta: evento `messages` + URL fixa (sem depender de ngrok)
+- [ ] Deploy com HTTPS (Nginx + Certbot) e processo (PM2) + restart automático
+- [ ] Rate limit / hardening no webhook (evitar abuso, logs e métricas)
+- [ ] Multi-tenant completo: CRUD de credenciais por empresa + onboarding (phone_number_id/token)
