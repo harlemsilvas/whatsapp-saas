@@ -1,4 +1,12 @@
 const axios = require("axios");
+const logger = require("../utils/logger");
+
+function maskPhone(value) {
+  if (!value) return "<missing>";
+  const s = String(value);
+  const last4 = s.slice(-4);
+  return `***${last4}`;
+}
 
 function maskToken(token) {
   if (!token) return "<missing>";
@@ -22,17 +30,28 @@ function requiredEnv(name) {
   return String(value).trim();
 }
 
-exports.enviarMensagem = async (to, text) => {
+function resolveValue(preferredValue, envName) {
+  if (preferredValue !== undefined && preferredValue !== null) {
+    const s = String(preferredValue).trim();
+    if (s) return s;
+  }
+  return requiredEnv(envName);
+}
+
+exports.enviarMensagem = async (to, text, options = {}) => {
   let url;
   let phoneId;
   let token;
   try {
-    const baseUrl = requiredEnv("WHATSAPP_URL").replace(/\/$/, "");
-    phoneId = requiredEnv("WHATSAPP_PHONE_ID");
-    token = requiredEnv("WHATSAPP_TOKEN");
+    const baseUrl = resolveValue(options.baseUrl, "WHATSAPP_URL").replace(
+      /\/$/,
+      "",
+    );
+    phoneId = resolveValue(options.phoneId, "WHATSAPP_PHONE_ID");
+    token = resolveValue(options.token, "WHATSAPP_TOKEN");
     url = `${baseUrl}/${phoneId}/messages`;
 
-    await axios.post(
+    const res = await axios.post(
       url,
       {
         messaging_product: "whatsapp",
@@ -48,12 +67,20 @@ exports.enviarMensagem = async (to, text) => {
         timeout: 15000,
       },
     );
+
+    logger.info("Mensagem enviada", {
+      to: maskPhone(to),
+      phoneId,
+      messageId: res.data?.messages?.[0]?.id || null,
+    });
+
+    return res.data;
   } catch (err) {
     const status = err.response?.status;
     const data = err.response?.data;
     const graphError = data?.error;
 
-    console.error("Erro ao enviar mensagem", {
+    logger.error("Erro ao enviar mensagem", {
       status,
       url,
       to,
@@ -70,5 +97,7 @@ exports.enviarMensagem = async (to, text) => {
         : data,
       message: err.message,
     });
+
+    throw err;
   }
 };

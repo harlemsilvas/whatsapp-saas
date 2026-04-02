@@ -10,6 +10,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "verify:whatsapp": "node scripts/verifyWhatsAppAuth.js",
+    "token:update": "node scripts/updateWhatsAppToken.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

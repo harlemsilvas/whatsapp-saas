@@ -25,6 +25,14 @@ exports.findByTelefone = async (telefone) => {
   return result.rows[0];
 };
 
+exports.findByPhoneNumberId = async (phoneNumberId) => {
+  const result = await db.query(
+    "SELECT * FROM empresas WHERE phone_number_id = $1",
+    [phoneNumberId],
+  );
+  return result.rows[0];
+};
+
 // Compatibilidade com o nome antigo (a coluna correta é `telefone`).
 exports.findByNumber = async (numero) => exports.findByTelefone(numero);
 
