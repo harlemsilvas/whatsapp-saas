@@ -1,0 +1,4 @@
+# ngrok.yml
+version: 3
+agent:
+  authtoken: 32R3tGTIaMM4y6PEv2bhfp6ccZA_2LmM4xPAFKyuanxvTu74q
