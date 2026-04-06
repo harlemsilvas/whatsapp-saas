@@ -36,37 +36,4 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -euo pipefail
-
-            APP_DIR="/home/whatsapp/app"
-            ECOSYSTEM="/home/whatsapp/ecosystem.config.js"
-            PM2_APP="whatsapp-saas-api"
-
-            echo "=== Deploy whatsapp-saas ==="
-            echo "$(date)"
-
-            command -v pm2 >/dev/null 2>&1 || { echo "❌ pm2 não encontrado no PATH"; exit 1; }
-            [ -d "$APP_DIR" ] || { echo "❌ APP_DIR não existe: $APP_DIR"; exit 1; }
-
-            cd "$APP_DIR"
-            git pull origin main
-
-            echo ">> Instalando dependencias (prod)..."
-            npm install --omit=dev
-
-            # Garante que o PM2 carregue processos salvos (se existir dump)
-            pm2 resurrect || true
-
-            echo ">> Reiniciando/Iniciando PM2..."
-            if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
-              pm2 restart "$PM2_APP" --update-env
-            else
-              [ -f "$ECOSYSTEM" ] || { echo "❌ ecosystem não encontrado: $ECOSYSTEM"; exit 1; }
-              pm2 start "$ECOSYSTEM" --only "$PM2_APP" --update-env
-            fi
-
-            pm2 save
-            pm2 status
-
-            echo "=== Deploy concluido ==="
+          script: /home/whatsapp/deploy.sh
