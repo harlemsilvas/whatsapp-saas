@@ -26,11 +26,19 @@ curl -sS http://localhost:3000/
 
 ## Itens obrigatórios na Meta (Políticas/Termos/Exclusão)
 
-Ao configurar o App no painel da Meta, normalmente são exigidas as URLs abaixo. Este projeto já expõe páginas públicas para isso:
+Ao configurar o App no painel da Meta, normalmente são exigidas as URLs abaixo. Este projeto já expõe páginas públicas para isso.
+
+Se você faz deploy em subpasta (ex.: Nginx com `/wppsaas/`), inclua o prefixo na URL final (ex.: `https://hrmmotos.com.br/wppsaas/privacy`).
 
 - Política de Privacidade: `https://SEU_DOMINIO/privacy`
 - Termos de Serviço: `https://SEU_DOMINIO/terms`
 - Exclusão de dados do usuário (instruções): `https://SEU_DOMINIO/data-deletion`
+
+Fallback (caso seu proxy só exponha a API em `/api/`):
+
+- Política de Privacidade: `https://SEU_DOMINIO/api/privacy`
+- Termos de Serviço: `https://SEU_DOMINIO/api/terms`
+- Exclusão de dados do usuário (instruções): `https://SEU_DOMINIO/api/data-deletion`
 
 Também preencha **Domínios do aplicativo** com o seu domínio (ex.: `seudominio.com` ou `api.seudominio.com`, conforme seu deploy).
 
@@ -148,3 +156,38 @@ No terminal do ngrok, pare com `Ctrl+C`.
 - [ ] Deploy com HTTPS (Nginx + Certbot) e processo (PM2) + restart automático
 - [ ] Rate limit / hardening no webhook (evitar abuso, logs e métricas)
 - [ ] Multi-tenant completo: CRUD de credenciais por empresa + onboarding (phone_number_id/token)
+
+## Admin (Empresas + Onboarding)
+
+Se `ADMIN_API_KEY` estiver definido no `.env`, os endpoints abaixo exigem header `x-api-key`.
+
+### Atualizar credenciais do WhatsApp por empresa (recomendado)
+
+Atualiza `empresas.whatsapp_token` e/ou `empresas.phone_number_id` e (por padrão) valida na Graph API antes de salvar.
+
+```bash
+curl -sS -X PUT "http://localhost:3000/api/empresas/1/whatsapp" \
+	-H "Content-Type: application/json" \
+	-H "x-api-key: $ADMIN_API_KEY" \
+	-d '{
+		"whatsapp_token": "SEU_TOKEN",
+		"phone_number_id": "993692280501871",
+		"validate": true
+	}'
+```
+
+### Verificar credenciais salvas no banco (empresa)
+
+```bash
+curl -sS -X POST "http://localhost:3000/api/empresas/1/whatsapp/verify" \
+	-H "x-api-key: $ADMIN_API_KEY" | jq
+```
+
+### Obter resumo de onboarding (URLs para colar na Meta)
+
+Defina `APP_PUBLIC_BASE_URL` no `.env` (ex.: `https://hrmmotos.com.br/wppsaas`) e chame:
+
+```bash
+curl -sS "http://localhost:3000/api/empresas/1/onboarding" \
+	-H "x-api-key: $ADMIN_API_KEY" | jq
+```

@@ -59,7 +59,7 @@ router.get("/privacy", (req, res) => {
     <p>Retemos os dados apenas pelo tempo necessário para operar o serviço e cumprir obrigações legais e de segurança.</p>
 
     <h2>Solicitações (acesso/exclusão)</h2>
-    <p>Para solicitar acesso, correção ou exclusão de dados, use a página <a href="/data-deletion">/data-deletion</a>.</p>
+    <p>Para solicitar acesso, correção ou exclusão de dados, use a página <a href="./data-deletion">data-deletion</a>.</p>
 
     <h2>Contato</h2>
     <p>${contactEmail ? `E-mail: <a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a>` : "Defina LEGAL_CONTACT_EMAIL no ambiente para exibir um e-mail de contato."}</p>

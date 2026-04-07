@@ -16,6 +16,9 @@ app.get("/", (req, res) => {
 // Rotas públicas (URLs exigidas pela Meta: privacidade/termos/exclusão de dados)
 app.use(publicRoutes);
 
+// Fallback: também expõe em /api/* (útil quando o deploy só proxya /wppsaas/api/)
+app.use("/api", publicRoutes);
+
 app.use("/api", routes);
 
 app.use(errorHandler);
