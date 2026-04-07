@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="pt-br">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin • Inbox</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      height: calc(100vh - 58px);
+    }
+
+    .col {
+      overflow: auto;
+    }
+
+    .left {
+      border-right: 1px solid #ddd;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    label {
+      font-size: 12px;
+      color: #444;
+    }
+
+    input {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    button {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #f7f7f7;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .list {
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .item {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .item.active {
+      background: #f2f2f2;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #ccc;
+      font-size: 12px;
+    }
+
+    .chat {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .msg {
+      border: 1px solid #e5e5e5;
+      border-radius: 10px;
+      padding: 8px 10px;
+      max-width: 720px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .msg.in {
+      align-self: flex-start;
+      background: #fff;
+    }
+
+    .msg.out {
+      align-self: flex-end;
+      background: #f9f9f9;
+    }
+
+    .compose {
+      margin-top: auto;
+      border-top: 1px solid #ddd;
+      padding: 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .compose input {
+      flex: 1;
+    }
+
+    .error {
+      color: #b00020;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="row">
+      <div>
+        <label>API Key</label><br />
+        <input id="apiKey" type="password" placeholder="x-api-key" size="22" />
+      </div>
+      <div>
+        <label>Empresa ID</label><br />
+        <input id="empresaId" type="number" min="1" placeholder="1" size="6" />
+      </div>
+      <div style="padding-top: 18px">
+        <button id="btnLoad">Carregar</button>
+      </div>
+      <div id="status" class="muted"></div>
+    </div>
+    <div id="err" class="error"></div>
+  </header>
+
+  <main>
+    <div class="col left">
+      <ul id="conversas" class="list"></ul>
+    </div>
+    <div class="col">
+      <div id="chat" class="chat">
+        <div class="muted">Selecione uma conversa.</div>
+      </div>
+      <div class="compose">
+        <button id="btnRead" disabled>Marcar como lida</button>
+        <input id="text" type="text" placeholder="Escreva uma mensagem…" disabled />
+        <button id="btnSend" disabled>Enviar</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const apiKeyInput = $("apiKey");
+    const empresaIdInput = $("empresaId");
+    const btnLoad = $("btnLoad");
+    const statusEl = $("status");
+    const errEl = $("err");
+    const conversasEl = $("conversas");
+    const chatEl = $("chat");
+    const btnSend = $("btnSend");
+    const btnRead = $("btnRead");
+    const textEl = $("text");
+
+    let currentContatoId = null;
+
+    function setError(msg) {
+      errEl.textContent = msg || "";
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = msg || "";
+    }
+
+    function headers() {
+      const key = String(apiKeyInput.value || "").trim();
+      return key ? { "x-api-key": key, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+    }
+
+    async function apiGet(path) {
+      const res = await fetch(path, { headers: headers() });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    async function apiPost(path, body) {
+      const res = await fetch(path, { method: "POST", headers: headers(), body: JSON.stringify(body || {}) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    function renderConversas(items) {
+      conversasEl.innerHTML = "";
+      for (const c of items) {
+        const li = document.createElement("li");
+        li.className = "item" + (String(c.id) === String(currentContatoId) ? " active" : "");
+
+        const title = document.createElement("div");
+        title.textContent = c.nome ? `${c.nome} • ${c.telefone}` : c.telefone;
+
+        const subtitle = document.createElement("div");
+        subtitle.className = "muted";
+        const last = c.last_message_conteudo ? String(c.last_message_conteudo).slice(0, 60) : "(sem mensagens)";
+        subtitle.textContent = last;
+
+        const meta = document.createElement("div");
+        meta.className = "row";
+        meta.style.marginTop = "6px";
+
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = c.unread_count ? `Não lidas: ${c.unread_count}` : "Ok";
+
+        meta.appendChild(badge);
+
+        li.appendChild(title);
+        li.appendChild(subtitle);
+        li.appendChild(meta);
+
+        li.addEventListener("click", () => selectContato(c.id));
+        conversasEl.appendChild(li);
+      }
+    }
+
+    function renderChat(payload) {
+      chatEl.innerHTML = "";
+
+      const head = document.createElement("div");
+      head.className = "row";
+      head.innerHTML = `<div><strong>${payload.contato.nome || payload.contato.telefone}</strong><div class="muted">Contato #${payload.contato.id}</div></div>`;
+
+      chatEl.appendChild(head);
+
+      for (const m of payload.mensagens) {
+        const div = document.createElement("div");
+        div.className = "msg " + (m.direcao === "entrada" ? "in" : "out");
+        const when = m.created_at ? new Date(m.created_at).toLocaleString() : "";
+        div.innerHTML = `<div>${escapeHtml(m.conteudo || "")}</div><div class="muted" style="margin-top:6px">${m.direcao} • ${when}</div>`;
+        chatEl.appendChild(div);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function loadConversas() {
+      setError("");
+      setStatus("Carregando conversas…");
+
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) throw new Error("Empresa ID inválido");
+
+      const data = await apiGet(`/api/admin/empresas/${empresaId}/conversas?limit=100`);
+      renderConversas(data);
+      setStatus(`Conversas: ${data.length}`);
+    }
+
+    async function selectContato(contatoId) {
+      currentContatoId = contatoId;
+      btnSend.disabled = false;
+      btnRead.disabled = false;
+      textEl.disabled = false;
+
+      setError("");
+      setStatus("Carregando mensagens…");
+
+      const empresaId = Number(empresaIdInput.value || 0);
+      const payload = await apiGet(`/api/admin/empresas/${empresaId}/conversas/${contatoId}/mensagens?order=asc&limit=200`);
+      renderChat(payload);
+      renderConversas(await apiGet(`/api/admin/empresas/${empresaId}/conversas?limit=100`));
+
+      setStatus("OK");
+    }
+
+    async function send() {
+      const empresaId = Number(empresaIdInput.value || 0);
+      const text = String(textEl.value || "").trim();
+      if (!text) return;
+      if (!currentContatoId) return;
+
+      btnSend.disabled = true;
+      setError("");
+      setStatus("Enviando…");
+
+      try {
+        await apiPost(`/api/admin/empresas/${empresaId}/conversas/${currentContatoId}/send`, { text });
+        textEl.value = "";
+        await selectContato(currentContatoId);
+        setStatus("Enviado");
+      } catch (e) {
+        setError(e.message);
+        setStatus("");
+      } finally {
+        btnSend.disabled = false;
+      }
+    }
+
+    async function markRead() {
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!currentContatoId) return;
+
+      btnRead.disabled = true;
+      setError("");
+      setStatus("Marcando como lida…");
+
+      try {
+        await apiPost(`/api/admin/empresas/${empresaId}/conversas/${currentContatoId}/read`);
+        await selectContato(currentContatoId);
+        setStatus("Lida");
+      } catch (e) {
+        setError(e.message);
+        setStatus("");
+      } finally {
+        btnRead.disabled = false;
+      }
+    }
+
+    btnLoad.addEventListener("click", async () => {
+      try {
+        localStorage.setItem("ADMIN_API_KEY", String(apiKeyInput.value || ""));
+        localStorage.setItem("EMPRESA_ID", String(empresaIdInput.value || ""));
+        await loadConversas();
+      } catch (e) {
+        setError(e.message);
+        setStatus("");
+      }
+    });
+
+    btnSend.addEventListener("click", send);
+    btnRead.addEventListener("click", markRead);
+    textEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") send();
+    });
+
+    (function init() {
+      const url = new URL(window.location.href);
+      const key = url.searchParams.get("key");
+
+      apiKeyInput.value = key || localStorage.getItem("ADMIN_API_KEY") || "";
+      empresaIdInput.value = localStorage.getItem("EMPRESA_ID") || "1";
+
+      if (key) {
+        url.searchParams.delete("key");
+        history.replaceState(null, "", url.toString());
+      }
+    })();
+  </script>
+</body>
+
+</html>

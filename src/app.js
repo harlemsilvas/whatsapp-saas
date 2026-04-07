@@ -21,6 +21,12 @@ app.use("/api", publicRoutes);
 
 app.use("/api", routes);
 
+// Atalho para o painel (em produção pode ser útil quando o proxy só expõe /api)
+app.get("/admin", (req, res) => {
+  const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  res.redirect(302, `/api/admin/ui${qs}`);
+});
+
 app.use(errorHandler);
 
 module.exports = app;

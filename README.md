@@ -191,3 +191,56 @@ Defina `APP_PUBLIC_BASE_URL` no `.env` (ex.: `https://hrmmotos.com.br/wppsaas`) 
 curl -sS "http://localhost:3000/api/empresas/1/onboarding" \
 	-H "x-api-key: $ADMIN_API_KEY" | jq
 ```
+
+## Admin (Inbox / Conversas)
+
+### Migração (não lidas)
+
+Para habilitar contagem de **não lidas**, a tabela `mensagens` precisa da coluna `lida_em`.
+
+Em bancos já existentes, rode:
+
+```bash
+npm run db:migrate:unread
+```
+
+### Abrir o painel web (MVP)
+
+O painel está em:
+
+- `http://localhost:3000/admin?key=SEU_ADMIN_API_KEY` (atalho)
+- `http://localhost:3000/api/admin/ui?key=SEU_ADMIN_API_KEY` (direto)
+
+Observação: o `?key=` é usado só para abrir a página no browser (ela remove do URL ao carregar). As chamadas de API usam `x-api-key`.
+
+### API de conversas (protegida por `x-api-key`)
+
+Listar conversas (contatos + última mensagem + não lidas):
+
+```bash
+curl -sS "http://localhost:3000/api/admin/empresas/1/conversas?limit=50" \
+	-H "x-api-key: $ADMIN_API_KEY" | jq
+```
+
+Buscar thread (mensagens) de um contato:
+
+```bash
+curl -sS "http://localhost:3000/api/admin/empresas/1/conversas/1/mensagens?order=asc&limit=200" \
+	-H "x-api-key: $ADMIN_API_KEY" | jq
+```
+
+Marcar mensagens de entrada como lidas:
+
+```bash
+curl -sS -X POST "http://localhost:3000/api/admin/empresas/1/conversas/1/read" \
+	-H "x-api-key: $ADMIN_API_KEY" | jq
+```
+
+Enviar mensagem manual (WhatsApp + salva em `mensagens` como `saida`):
+
+```bash
+curl -sS -X POST "http://localhost:3000/api/admin/empresas/1/conversas/1/send" \
+	-H "Content-Type: application/json" \
+	-H "x-api-key: $ADMIN_API_KEY" \
+	-d '{"text":"Olá! Posso ajudar?"}' | jq
+```

@@ -30,6 +30,7 @@ CREATE TABLE mensagens (
   direcao VARCHAR(10), -- entrada | saida
   conteudo TEXT,
   tipo VARCHAR(20) DEFAULT 'text',
+  lida_em TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
