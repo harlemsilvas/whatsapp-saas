@@ -218,6 +218,15 @@
       return res.json();
     }
 
+    // Resolve URLs do painel (funciona local e em subpasta /wppsaas/api/admin/ui)
+    function adminUrl(path) {
+      const base = new URL(".", window.location.href); // .../api/admin/
+      base.search = "";
+      base.hash = "";
+      const cleaned = String(path || "").replace(/^\/+/, "");
+      return new URL(cleaned, base).toString();
+    }
+
     function renderConversas(items) {
       conversasEl.innerHTML = "";
       for (const c of items) {
@@ -285,7 +294,7 @@
       const empresaId = Number(empresaIdInput.value || 0);
       if (!empresaId) throw new Error("Empresa ID inválido");
 
-      const data = await apiGet(`/api/admin/empresas/${empresaId}/conversas?limit=100`);
+      const data = await apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`));
       renderConversas(data);
       setStatus(`Conversas: ${data.length}`);
     }
@@ -300,9 +309,9 @@
       setStatus("Carregando mensagens…");
 
       const empresaId = Number(empresaIdInput.value || 0);
-      const payload = await apiGet(`/api/admin/empresas/${empresaId}/conversas/${contatoId}/mensagens?order=asc&limit=200`);
+      const payload = await apiGet(adminUrl(`empresas/${empresaId}/conversas/${contatoId}/mensagens?order=asc&limit=200`));
       renderChat(payload);
-      renderConversas(await apiGet(`/api/admin/empresas/${empresaId}/conversas?limit=100`));
+      renderConversas(await apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`)));
 
       setStatus("OK");
     }
@@ -318,7 +327,7 @@
       setStatus("Enviando…");
 
       try {
-        await apiPost(`/api/admin/empresas/${empresaId}/conversas/${currentContatoId}/send`, { text });
+        await apiPost(adminUrl(`empresas/${empresaId}/conversas/${currentContatoId}/send`), { text });
         textEl.value = "";
         await selectContato(currentContatoId);
         setStatus("Enviado");
@@ -339,7 +348,7 @@
       setStatus("Marcando como lida…");
 
       try {
-        await apiPost(`/api/admin/empresas/${empresaId}/conversas/${currentContatoId}/read`);
+        await apiPost(adminUrl(`empresas/${empresaId}/conversas/${currentContatoId}/read`));
         await selectContato(currentContatoId);
         setStatus("Lida");
       } catch (e) {
