@@ -24,6 +24,32 @@ Healthcheck:
 curl -sS http://localhost:3000/
 ```
 
+## Itens obrigatórios na Meta (Políticas/Termos/Exclusão)
+
+Ao configurar o App no painel da Meta, normalmente são exigidas as URLs abaixo. Este projeto já expõe páginas públicas para isso:
+
+- Política de Privacidade: `https://SEU_DOMINIO/privacy`
+- Termos de Serviço: `https://SEU_DOMINIO/terms`
+- Exclusão de dados do usuário (instruções): `https://SEU_DOMINIO/data-deletion`
+
+Também preencha **Domínios do aplicativo** com o seu domínio (ex.: `seudominio.com` ou `api.seudominio.com`, conforme seu deploy).
+
+### Personalizar texto/e-mail exibidos nas páginas
+
+As páginas acima usam variáveis de ambiente (opcionais):
+
+- `SERVICE_NAME` (padrão: `WhatsApp SaaS`)
+- `LEGAL_ENTITY_NAME` (padrão: vazio)
+- `LEGAL_CONTACT_EMAIL` (fallback: `CONTACT_EMAIL`, se existir)
+
+Exemplo no `.env`:
+
+```bash
+SERVICE_NAME=HRM Motos - Atendimento WhatsApp
+LEGAL_ENTITY_NAME=HRM Motos LTDA
+LEGAL_CONTACT_EMAIL=seu-email@dominio.com
+```
+
 ## ngrok (para webhook público)
 
 Exemplo:
