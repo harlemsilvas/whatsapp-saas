@@ -3,6 +3,7 @@ const Contato = require("../models/Contato");
 const Empresa = require("../models/Empresa");
 const Mensagem = require("../models/Mensagem");
 const whatsappService = require("../services/whatsappService");
+const { normalizeTelefoneBR, isTelefoneE164Like } = require("../utils/phone");
 
 function toInt(value) {
   const n = Number(value);
@@ -114,7 +115,13 @@ exports.enviarManual = async (req, res, next) => {
     }
 
     const whatsapp = await whatsappService.enviarMensagem(
-      contato.telefone,
+      (() => {
+        const to = normalizeTelefoneBR(contato.telefone);
+        if (!to || !isTelefoneE164Like(to)) {
+          throw new Error("Telefone do contato inválido");
+        }
+        return to;
+      })(),
       messageText,
       {
         token: empresa.whatsapp_token,
@@ -129,12 +136,10 @@ exports.enviarManual = async (req, res, next) => {
       tipo: "text",
     });
 
-    res
-      .status(201)
-      .json({
-        mensagem,
-        whatsappMessageId: whatsapp?.messages?.[0]?.id || null,
-      });
+    res.status(201).json({
+      mensagem,
+      whatsappMessageId: whatsapp?.messages?.[0]?.id || null,
+    });
   } catch (err) {
     next(err);
   }

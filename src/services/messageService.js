@@ -6,6 +6,7 @@ const iaService = require("./iaService");
 const whatsappService = require("./whatsappService");
 const logger = require("../utils/logger");
 const env = require("../config/env");
+const { normalizeTelefoneBR } = require("../utils/phone");
 
 function maskPhone(value) {
   if (!value) return "<missing>";
@@ -32,9 +33,10 @@ exports.processar = async (payload) => {
   if (!msg) return;
 
   const mensagem = msg.text?.body;
-  const numero = msg.from;
+  const numero = normalizeTelefoneBR(msg.from);
 
   if (!mensagem) return;
+  if (!numero) return;
 
   let empresa;
   let useEnvWhatsApp = false;
@@ -85,6 +87,7 @@ exports.processar = async (payload) => {
 
   // 🔹 1. buscar ou criar contato
   const contato = await Contato.findOrCreate(empresa_id, numero);
+  if (!contato) return;
 
   // 🔹 2. salvar mensagem de entrada
   await Mensagem.create({
@@ -106,7 +109,7 @@ exports.processar = async (payload) => {
   let sendTo = numero;
   if (useEnvWhatsApp) {
     const isProd = process.env.NODE_ENV === "production";
-    const meuTelefone = String(process.env.MEU_TELEFONE || "").trim();
+    const meuTelefone = normalizeTelefoneBR(process.env.MEU_TELEFONE);
 
     // Quando o payload é exemplo (phone_number_id fake), o "from" costuma ser um número
     // que não está na lista permitida do ambiente de teste. Em dev, redireciona para o

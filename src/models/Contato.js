@@ -1,4 +1,5 @@
 const db = require("../config/database");
+const { normalizeTelefoneBR } = require("../utils/phone");
 
 exports.listByEmpresaId = async (
   empresaId,
@@ -26,21 +27,29 @@ exports.findById = async (empresaId, contatoId) => {
 };
 
 exports.findByTelefone = async (empresaId, telefone) => {
+  const telefoneNorm = normalizeTelefoneBR(telefone);
+  if (!telefoneNorm) return null;
   const result = await db.query(
     `SELECT *
      FROM contatos
-     WHERE empresa_id = $1 AND telefone = $2`,
-    [empresaId, telefone],
+     WHERE empresa_id = $1
+       AND (
+         telefone = $2
+         OR regexp_replace(telefone, '\\D', '', 'g') = $2
+       )
+     LIMIT 1`,
+    [empresaId, telefoneNorm],
   );
   return result.rows[0];
 };
 
 exports.create = async (empresaId, { nome = null, telefone, tags = null }) => {
+  const telefoneNorm = normalizeTelefoneBR(telefone);
   const result = await db.query(
     `INSERT INTO contatos (empresa_id, nome, telefone, tags)
      VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [empresaId, nome, telefone, tags],
+    [empresaId, nome, telefoneNorm, tags],
   );
   return result.rows[0];
 };
@@ -50,6 +59,7 @@ exports.update = async (
   contatoId,
   { nome = null, telefone = null, tags = null },
 ) => {
+  const telefoneNorm = telefone === null ? null : normalizeTelefoneBR(telefone);
   const result = await db.query(
     `UPDATE contatos
      SET
@@ -58,7 +68,7 @@ exports.update = async (
        tags = COALESCE($5, tags)
      WHERE empresa_id = $1 AND id = $2
      RETURNING *`,
-    [empresaId, contatoId, nome, telefone, tags],
+    [empresaId, contatoId, nome, telefoneNorm, tags],
   );
   return result.rows[0];
 };
@@ -74,9 +84,17 @@ exports.remove = async (empresaId, contatoId) => {
 };
 
 exports.findOrCreate = async (empresaId, telefone, { nome = null } = {}) => {
-  let contato = await exports.findByTelefone(empresaId, telefone);
+  const telefoneNorm = normalizeTelefoneBR(telefone);
+  if (!telefoneNorm) return null;
+
+  let contato = await exports.findByTelefone(empresaId, telefoneNorm);
   if (!contato) {
-    contato = await exports.create(empresaId, { nome, telefone });
+    contato = await exports.create(empresaId, { nome, telefone: telefoneNorm });
+  } else if (contato.telefone !== telefoneNorm) {
+    // Normaliza registros antigos (com +, espaços, etc.) ao longo do tempo.
+    contato = await exports.update(empresaId, contato.id, {
+      telefone: telefoneNorm,
+    });
   }
   return contato;
 };

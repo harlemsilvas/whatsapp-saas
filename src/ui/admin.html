@@ -152,6 +152,23 @@
       </div>
       <div id="status" class="muted"></div>
     </div>
+    <div class="row" style="margin-top: 10px">
+      <div>
+        <label>Novo telefone</label><br />
+        <input id="newTelefone" type="tel" placeholder="(11) 99999-9999" size="22" />
+      </div>
+      <div>
+        <label>Novo nome</label><br />
+        <input id="newNome" type="text" placeholder="Ex.: João" size="18" />
+      </div>
+      <div>
+        <label>Tags (separadas por vírgula)</label><br />
+        <input id="newTags" type="text" placeholder="vip, orçamento" size="22" />
+      </div>
+      <div style="padding-top: 18px">
+        <button id="btnCreate">Criar contato</button>
+      </div>
+    </div>
     <div id="err" class="error"></div>
   </header>
 
@@ -184,8 +201,13 @@
     const btnSend = $("btnSend");
     const btnRead = $("btnRead");
     const textEl = $("text");
+    const newTelefoneEl = $("newTelefone");
+    const newNomeEl = $("newNome");
+    const newTagsEl = $("newTags");
+    const btnCreate = $("btnCreate");
 
     let currentContatoId = null;
+    let currentContato = null;
 
     function setError(msg) {
       errEl.textContent = msg || "";
@@ -218,6 +240,15 @@
       return res.json();
     }
 
+    async function apiPut(path, body) {
+      const res = await fetch(path, { method: "PUT", headers: headers(), body: JSON.stringify(body || {}) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
     // Resolve URLs do painel (funciona local e em subpasta /wppsaas/api/admin/ui)
     function adminUrl(path) {
       const base = new URL(".", window.location.href); // .../api/admin/
@@ -227,6 +258,57 @@
       return new URL(cleaned, base).toString();
     }
 
+    // Resolve URLs para a API base (.../api/), a partir da UI em .../api/admin/ui
+    function apiUrl(path) {
+      const base = new URL("../../", window.location.href); // .../api/
+      base.search = "";
+      base.hash = "";
+      const cleaned = String(path || "").replace(/^\/+/, "");
+      return new URL(cleaned, base).toString();
+    }
+
+    function normalizeTelefone(raw) {
+      const digits = String(raw || "").replace(/\D+/g, "");
+      if (!digits) return "";
+      if (digits.startsWith("55")) return digits;
+      // DDD+numero (10/11) sem país
+      if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+      // já veio com país mas sem 55 (ex.: outros) => mantém como está
+      return digits;
+    }
+
+    function formatTelefoneDisplay(raw) {
+      const digits = normalizeTelefone(raw);
+      if (!digits) return "";
+      const national = digits.startsWith("55") ? digits.slice(2) : digits;
+      const ddd = national.slice(0, 2);
+      const rest = national.slice(2);
+      if (rest.length === 9) {
+        return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+      }
+      if (rest.length === 8) {
+        return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+      }
+      return digits.startsWith("55") ? `+${digits}` : digits;
+    }
+
+    function parseTags(raw, { empty = "null" } = {}) {
+      const s = String(raw || "").trim();
+      if (!s) return empty === "array" ? [] : null;
+      const items = s
+        .split(",")
+        .map((t) => String(t).trim())
+        .filter(Boolean);
+      if (items.length) return items;
+      return empty === "array" ? [] : null;
+    }
+
+    function tagsToString(tags) {
+      if (!tags) return "";
+      if (Array.isArray(tags)) return tags.filter(Boolean).join(", ");
+      return String(tags);
+    }
+
     function renderConversas(items) {
       conversasEl.innerHTML = "";
       for (const c of items) {
@@ -234,7 +316,8 @@
         li.className = "item" + (String(c.id) === String(currentContatoId) ? " active" : "");
 
         const title = document.createElement("div");
-        title.textContent = c.nome ? `${c.nome} • ${c.telefone}` : c.telefone;
+        const phone = formatTelefoneDisplay(c.telefone || "");
+        title.textContent = c.nome ? `${c.nome} • ${phone || (c.telefone || "")}` : (phone || (c.telefone || ""));
 
         const subtitle = document.createElement("div");
         subtitle.className = "muted";
@@ -263,11 +346,64 @@
     function renderChat(payload) {
       chatEl.innerHTML = "";
 
+      currentContato = payload.contato;
+
       const head = document.createElement("div");
       head.className = "row";
-      head.innerHTML = `<div><strong>${payload.contato.nome || payload.contato.telefone}</strong><div class="muted">Contato #${payload.contato.id}</div></div>`;
+
+      const displayPhone = formatTelefoneDisplay(payload.contato.telefone || "") || payload.contato.telefone || "";
+      const safeName = escapeHtml(payload.contato.nome || "");
+      const safeTags = escapeHtml(tagsToString(payload.contato.tags || null));
+
+      head.innerHTML = `
+        <div style="flex:1">
+          <div><strong>${safeName || escapeHtml(displayPhone)}</strong></div>
+          <div class="muted">${escapeHtml(displayPhone)} • Contato #${payload.contato.id}</div>
+          <div class="row" style="margin-top:8px">
+            <div>
+              <label>Nome</label><br />
+              <input id="editNome" type="text" value="${safeName}" size="22" />
+            </div>
+            <div>
+              <label>Tags</label><br />
+              <input id="editTags" type="text" value="${safeTags}" size="26" placeholder="vip, orçamento" />
+            </div>
+            <div style="padding-top:18px">
+              <button id="btnSaveContato">Salvar contato</button>
+            </div>
+          </div>
+        </div>
+      `;
 
       chatEl.appendChild(head);
+
+      const btnSaveContato = head.querySelector("#btnSaveContato");
+      const editNome = head.querySelector("#editNome");
+      const editTags = head.querySelector("#editTags");
+
+      btnSaveContato.addEventListener("click", async () => {
+        try {
+          setError("");
+          setStatus("Salvando contato…");
+
+          const empresaId = Number(empresaIdInput.value || 0);
+          if (!empresaId) throw new Error("Empresa ID inválido");
+          const nomeRaw = String(editNome.value || "");
+          const nome = nomeRaw.trim() === "" ? "" : nomeRaw.trim();
+          const tags = parseTags(editTags.value || "", { empty: "array" });
+
+          await apiPut(apiUrl(`empresas/${empresaId}/contatos/${payload.contato.id}`), {
+            nome,
+            tags,
+          });
+
+          await selectContato(payload.contato.id);
+          setStatus("Contato salvo");
+        } catch (e) {
+          setError(e.message);
+          setStatus("");
+        }
+      });
 
       for (const m of payload.mensagens) {
         const div = document.createElement("div");
@@ -301,6 +437,7 @@
 
     async function selectContato(contatoId) {
       currentContatoId = contatoId;
+      currentContato = null;
       btnSend.disabled = false;
       btnRead.disabled = false;
       textEl.disabled = false;
@@ -370,6 +507,40 @@
       }
     });
 
+    btnCreate.addEventListener("click", async () => {
+      try {
+        setError("");
+        setStatus("Criando contato…");
+
+        const empresaId = Number(empresaIdInput.value || 0);
+        if (!empresaId) throw new Error("Empresa ID inválido");
+
+        const telefoneNorm = normalizeTelefone(newTelefoneEl.value);
+        if (!telefoneNorm) throw new Error("Telefone é obrigatório");
+        if (telefoneNorm.length < 12) throw new Error("Telefone inválido");
+
+        const nome = String(newNomeEl.value || "").trim() || null;
+        const tags = parseTags(newTagsEl.value || "", { empty: "null" });
+
+        const contato = await apiPost(apiUrl(`empresas/${empresaId}/contatos`), {
+          nome,
+          telefone: telefoneNorm,
+          tags,
+        });
+
+        newTelefoneEl.value = "";
+        newNomeEl.value = "";
+        newTagsEl.value = "";
+
+        await loadConversas();
+        await selectContato(contato.id);
+        setStatus("Contato criado");
+      } catch (e) {
+        setError(e.message);
+        setStatus("");
+      }
+    });
+
     btnSend.addEventListener("click", send);
     btnRead.addEventListener("click", markRead);
     textEl.addEventListener("keydown", (e) => {
@@ -388,6 +559,13 @@
         history.replaceState(null, "", url.toString());
       }
     })();
+
+    // Máscara simples para o input de telefone (somente visual)
+    newTelefoneEl.addEventListener("blur", () => {
+      const digits = String(newTelefoneEl.value || "").replace(/\D+/g, "");
+      if (!digits) return;
+      newTelefoneEl.value = formatTelefoneDisplay(digits);
+    });
   </script>
 </body>
 

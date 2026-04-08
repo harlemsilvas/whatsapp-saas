@@ -1,4 +1,5 @@
 const Contato = require("../models/Contato");
+const { normalizeTelefoneBR, isTelefoneE164Like } = require("../utils/phone");
 
 function toInt(value) {
   const n = Number(value);
@@ -52,7 +53,16 @@ exports.criar = async (req, res, next) => {
     if (!telefone)
       return res.status(400).json({ error: "telefone é obrigatório" });
 
-    const contato = await Contato.create(empresaId, { nome, telefone, tags });
+    const telefoneNorm = normalizeTelefoneBR(telefone);
+    if (!telefoneNorm || !isTelefoneE164Like(telefoneNorm)) {
+      return res.status(400).json({ error: "telefone inválido" });
+    }
+
+    const contato = await Contato.create(empresaId, {
+      nome,
+      telefone: telefoneNorm,
+      tags,
+    });
     res.status(201).json(contato);
   } catch (err) {
     next(err);
@@ -67,7 +77,16 @@ exports.atualizar = async (req, res, next) => {
       return res.status(400).json({ error: "empresaId inválido" });
     if (!contatoId) return res.status(400).json({ error: "id inválido" });
 
-    const contato = await Contato.update(empresaId, contatoId, req.body || {});
+    const body = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(body, "telefone")) {
+      const telefoneNorm = normalizeTelefoneBR(body.telefone);
+      if (!telefoneNorm || !isTelefoneE164Like(telefoneNorm)) {
+        return res.status(400).json({ error: "telefone inválido" });
+      }
+      body.telefone = telefoneNorm;
+    }
+
+    const contato = await Contato.update(empresaId, contatoId, body);
     if (!contato)
       return res.status(404).json({ error: "Contato não encontrado" });
 
