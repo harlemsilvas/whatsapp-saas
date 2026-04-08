@@ -258,11 +258,14 @@
       return new URL(cleaned, base).toString();
     }
 
-    // Resolve URLs para a API base (.../api/), a partir da UI em .../api/admin/ui
+    // Resolve URLs para a API base (.../api/) derivando da base do admin (.../api/admin/)
+    // Isso evita perder o prefixo /api quando a UI está em subpath (/wppsaas/...).
     function apiUrl(path) {
-      const base = new URL("../../", window.location.href); // .../api/
-      base.search = "";
-      base.hash = "";
+      const adminBase = new URL(".", window.location.href); // .../api/admin/
+      adminBase.search = "";
+      adminBase.hash = "";
+
+      const base = new URL("../", adminBase); // .../api/
       const cleaned = String(path || "").replace(/^\/+/, "");
       return new URL(cleaned, base).toString();
     }
