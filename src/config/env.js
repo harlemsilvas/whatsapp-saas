@@ -32,6 +32,10 @@ function validate() {
   const requireDb = toBool(process.env.REQUIRE_DB_ENV, isProd);
   const requireWhatsApp = toBool(process.env.REQUIRE_WHATSAPP_ENV, isProd);
   const requireVerifyToken = toBool(process.env.REQUIRE_VERIFY_TOKEN, isProd);
+  const requireWhatsAppWebhookSignature = toBool(
+    process.env.REQUIRE_WHATSAPP_WEBHOOK_SIGNATURE,
+    isProd,
+  );
 
   if (requireDb) {
     required("DB_HOST");
@@ -48,6 +52,10 @@ function validate() {
 
   if (requireVerifyToken) {
     required("VERIFY_TOKEN");
+  }
+
+  if (requireWhatsAppWebhookSignature) {
+    required("WHATSAPP_APP_SECRET");
   }
 
   // LOG_LEVEL é opcional; PORT também.

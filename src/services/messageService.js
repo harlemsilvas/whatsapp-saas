@@ -16,6 +16,47 @@ function maskPhone(value) {
   return `***${last4}`;
 }
 
+async function maybeSendReengagementTemplate({
+  sendTo,
+  empresa,
+  useEnvWhatsApp,
+  outsideWindowGraph,
+  empresaId,
+  contatoId,
+}) {
+  const templateName = String(
+    process.env.WHATSAPP_REENGAGE_TEMPLATE_NAME || "",
+  ).trim();
+
+  if (!templateName) {
+    logger.warn("Fora da janela 24h: template não configurado", {
+      empresaId,
+      contatoId,
+      to: maskPhone(sendTo),
+      hint: "Defina WHATSAPP_REENGAGE_TEMPLATE_NAME e aprove um template na Meta",
+      graph: outsideWindowGraph || null,
+    });
+    return;
+  }
+
+  const languageCode = String(
+    process.env.WHATSAPP_REENGAGE_TEMPLATE_LANG ||
+      process.env.WHATSAPP_TEMPLATE_LANG ||
+      "pt_BR",
+  ).trim();
+
+  const options = {
+    languageCode,
+  };
+
+  if (!useEnvWhatsApp) {
+    options.token = empresa.whatsapp_token || null;
+    options.phoneId = empresa.phone_number_id || null;
+  }
+
+  await whatsappService.enviarTemplateMensagem(sendTo, templateName, options);
+}
+
 exports.processar = async (payload) => {
   const value = payload?.entry?.[0]?.changes?.[0]?.value;
   const msg = value?.messages?.[0];
@@ -197,12 +238,74 @@ exports.processar = async (payload) => {
       sendTo = meuTelefone;
     }
 
-    await whatsappService.enviarMensagem(sendTo, resposta);
+    try {
+      await whatsappService.enviarMensagem(sendTo, resposta);
+    } catch (err) {
+      if (err && err.whatsappReason === "outside_24h_window") {
+        logger.warn("Resposta não enviada (fora da janela 24h)", {
+          empresaId: empresa_id,
+          contatoId: contato.id,
+          to: maskPhone(sendTo),
+          graph: err.whatsappGraph || null,
+        });
+
+        try {
+          await maybeSendReengagementTemplate({
+            sendTo,
+            empresa,
+            useEnvWhatsApp,
+            outsideWindowGraph: err.whatsappGraph || null,
+            empresaId: empresa_id,
+            contatoId: contato.id,
+          });
+        } catch (templateErr) {
+          logger.warn("Falha ao enviar template de retomada", {
+            empresaId: empresa_id,
+            contatoId: contato.id,
+            to: maskPhone(sendTo),
+            message: templateErr.message,
+          });
+        }
+        return;
+      }
+      throw err;
+    }
   } else {
-    await whatsappService.enviarMensagem(sendTo, resposta, {
-      token: empresa.whatsapp_token || null,
-      phoneId: empresa.phone_number_id || null,
-    });
+    try {
+      await whatsappService.enviarMensagem(sendTo, resposta, {
+        token: empresa.whatsapp_token || null,
+        phoneId: empresa.phone_number_id || null,
+      });
+    } catch (err) {
+      if (err && err.whatsappReason === "outside_24h_window") {
+        logger.warn("Resposta não enviada (fora da janela 24h)", {
+          empresaId: empresa_id,
+          contatoId: contato.id,
+          to: maskPhone(sendTo),
+          graph: err.whatsappGraph || null,
+        });
+
+        try {
+          await maybeSendReengagementTemplate({
+            sendTo,
+            empresa,
+            useEnvWhatsApp,
+            outsideWindowGraph: err.whatsappGraph || null,
+            empresaId: empresa_id,
+            contatoId: contato.id,
+          });
+        } catch (templateErr) {
+          logger.warn("Falha ao enviar template de retomada", {
+            empresaId: empresa_id,
+            contatoId: contato.id,
+            to: maskPhone(sendTo),
+            message: templateErr.message,
+          });
+        }
+        return;
+      }
+      throw err;
+    }
   }
 
   // 🔹 6. salvar resposta

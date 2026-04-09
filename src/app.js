@@ -7,7 +7,14 @@ const errorHandler = require("./middlewares/errorHandler");
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      // Necessário para validar X-Hub-Signature-256 (Meta/WhatsApp)
+      req.rawBody = buf;
+    },
+  }),
+);
 
 app.get("/", (req, res) => {
   res.send("API rodando 🚀");
