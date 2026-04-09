@@ -213,6 +213,44 @@ O painel está em:
 
 Observação: o `?key=` é usado só para abrir a página no browser (ela remove do URL ao carregar). As chamadas de API usam `x-api-key`.
 
+## OpenAI (respostas por IA)
+
+O projeto tem um fallback de IA em `src/services/iaService.js`. Quando não existe fluxo correspondente, ele pode chamar a OpenAI para gerar uma resposta.
+
+### Variáveis de ambiente
+
+- `OPENAI_API_KEY` (obrigatório para habilitar IA)
+- `OPENAI_MODEL` (opcional, padrão: `gpt-4o-mini`)
+- `OPENAI_BASE_URL` (opcional, padrão: `https://api.openai.com/v1`)
+- `OPENAI_MAX_OUTPUT_TOKENS` (opcional, padrão: `220`)
+- `OPENAI_TEMPERATURE` (opcional, padrão: `0.4`)
+- `OPENAI_TIMEOUT_MS` (opcional, padrão: `15000`)
+- `OPENAI_MAX_CONTEXT_MESSAGES` (opcional, padrão: `8`) quantas mensagens recentes entram como contexto
+- `OPENAI_REASONING_EFFORT` (opcional, padrão: `low`) reduz gasto de tokens em modelos de raciocínio
+- `AI_FALLBACK_TEXT` (opcional) texto usado quando a IA estiver desativada ou falhar
+
+### Perfil da empresa (base de conhecimento)
+
+Para respostas mais consistentes, você pode fornecer um documento com o “perfil da empresa” (horários, serviços, regras, etc.).
+
+- `AI_COMPANY_PROFILE_PATH` (opcional) caminho do arquivo Markdown com o perfil (recomendado)
+- `AI_COMPANY_PROFILE_TEXT` (opcional) texto inline com o perfil (alternativa)
+- `AI_COMPANY_PROFILE_MAX_CHARS` (opcional, padrão: `4000`) trunca o perfil para evitar estourar tokens
+- `AI_COMPANY_PROFILE_CACHE_MS` (opcional, padrão: `30000`) cache do arquivo em memória
+
+Template sugerido: `src/ai/perfil-empresa.md`.
+
+Nota: em alguns modelos (ex.: `gpt-5-nano`), o endpoint `/v1/responses` pode retornar `status=incomplete` por `max_output_tokens` quando o limite é baixo. O projeto faz retry automático aumentando o limite, mas você pode ajustar `OPENAI_MAX_OUTPUT_TOKENS` se quiser.
+
+Exemplo no `.env`:
+
+```bash
+OPENAI_API_KEY=SEU_TOKEN_DA_OPENAI
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_MAX_OUTPUT_TOKENS=220
+OPENAI_TEMPERATURE=0.4
+```
+
 ### API de conversas (protegida por `x-api-key`)
 
 Listar conversas (contatos + última mensagem + não lidas):

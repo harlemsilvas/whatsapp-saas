@@ -1,6 +1,7 @@
 const Contato = require("../models/Contato");
 const Empresa = require("../models/Empresa");
 const Mensagem = require("../models/Mensagem");
+const Conversa = require("../models/Conversa");
 const fluxoService = require("./fluxoService");
 const iaService = require("./iaService");
 const whatsappService = require("./whatsappService");
@@ -102,7 +103,44 @@ exports.processar = async (payload) => {
 
   // 🔹 4. fallback IA
   if (!resposta) {
-    resposta = await iaService.gerarResposta(mensagem);
+    const maxCtx = Math.max(
+      0,
+      Math.trunc(Number(process.env.OPENAI_MAX_CONTEXT_MESSAGES || 8) || 8),
+    );
+
+    let contextoMensagens = [];
+    if (maxCtx > 0) {
+      const recent = await Conversa.listMensagensByContato(
+        empresa_id,
+        contato.id,
+        {
+          limit: maxCtx,
+          offset: 0,
+          order: "desc",
+        },
+      );
+
+      // recent vem DESC; coloca em ordem cronológica
+      const ordered = recent.slice().reverse();
+
+      // evita duplicar a mensagem atual (já foi salva e virá no histórico)
+      const withoutLast = ordered.length
+        ? ordered.slice(0, ordered.length - 1)
+        : ordered;
+
+      contextoMensagens = withoutLast
+        .map((m) => ({
+          role: m.direcao === "saida" ? "assistant" : "user",
+          content: m.conteudo,
+        }))
+        .filter((m) => m.content);
+    }
+
+    resposta = await iaService.gerarResposta({
+      mensagem,
+      contextoMensagens,
+      contato,
+    });
   }
 
   // 🔹 5. enviar resposta
