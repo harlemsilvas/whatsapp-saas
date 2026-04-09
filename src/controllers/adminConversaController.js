@@ -136,10 +136,74 @@ exports.enviarManual = async (req, res, next) => {
       tipo: "text",
     });
 
+    // Ao enviar manualmente, assume atendimento humano e pausa o bot por um tempo.
+    const pauseMinutes = Math.max(
+      0,
+      Math.trunc(Number(process.env.HUMAN_TAKEOVER_PAUSE_MINUTES || 60) || 60),
+    );
+    const contatoAtualizado = await Contato.assumirAtendimento(
+      empresaId,
+      contatoId,
+      {
+        assumidoPor: "admin",
+        pauseMinutes,
+      },
+    );
+
     res.status(201).json({
       mensagem,
+      contato: contatoAtualizado || contato,
       whatsappMessageId: whatsapp?.messages?.[0]?.id || null,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.assumirAtendimento = async (req, res, next) => {
+  try {
+    const empresaId = toInt(req.params.empresaId);
+    const contatoId = toInt(req.params.contatoId);
+    if (!empresaId)
+      return res.status(400).json({ error: "empresaId inválido" });
+    if (!contatoId)
+      return res.status(400).json({ error: "contatoId inválido" });
+
+    const contato = await Contato.findById(empresaId, contatoId);
+    if (!contato)
+      return res.status(404).json({ error: "Contato não encontrado" });
+
+    const pauseMinutes = Math.max(
+      0,
+      Math.trunc(Number(process.env.HUMAN_TAKEOVER_PAUSE_MINUTES || 60) || 60),
+    );
+
+    const updated = await Contato.assumirAtendimento(empresaId, contatoId, {
+      assumidoPor: "admin",
+      pauseMinutes,
+    });
+
+    res.json({ contato: updated });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.devolverParaBot = async (req, res, next) => {
+  try {
+    const empresaId = toInt(req.params.empresaId);
+    const contatoId = toInt(req.params.contatoId);
+    if (!empresaId)
+      return res.status(400).json({ error: "empresaId inválido" });
+    if (!contatoId)
+      return res.status(400).json({ error: "contatoId inválido" });
+
+    const contato = await Contato.findById(empresaId, contatoId);
+    if (!contato)
+      return res.status(404).json({ error: "Contato não encontrado" });
+
+    const updated = await Contato.devolverParaBot(empresaId, contatoId);
+    res.json({ contato: updated });
   } catch (err) {
     next(err);
   }

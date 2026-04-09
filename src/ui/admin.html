@@ -335,7 +335,13 @@
         badge.className = "badge";
         badge.textContent = c.unread_count ? `Não lidas: ${c.unread_count}` : "Ok";
 
+        const modeBadge = document.createElement("span");
+        modeBadge.className = "badge";
+        const mode = String(c.atendimento_modo || "bot").toLowerCase();
+        modeBadge.textContent = mode === "humano" ? "HUMANO" : "BOT";
+
         meta.appendChild(badge);
+        meta.appendChild(modeBadge);
 
         li.appendChild(title);
         li.appendChild(subtitle);
@@ -375,6 +381,12 @@
               <button id="btnSaveContato">Salvar contato</button>
             </div>
           </div>
+
+          <div class="row" style="margin-top:10px">
+            <span class="badge" id="attBadge">—</span>
+            <button id="btnAssumir">Assumir atendimento</button>
+            <button id="btnDevolver">Devolver para bot</button>
+          </div>
         </div>
       `;
 
@@ -383,6 +395,54 @@
       const btnSaveContato = head.querySelector("#btnSaveContato");
       const editNome = head.querySelector("#editNome");
       const editTags = head.querySelector("#editTags");
+      const attBadge = head.querySelector("#attBadge");
+      const btnAssumir = head.querySelector("#btnAssumir");
+      const btnDevolver = head.querySelector("#btnDevolver");
+
+      (function applyAtendimentoState() {
+        const modo = String(payload?.contato?.atendimento_modo || "bot").toLowerCase();
+        const pausadoAte = payload?.contato?.atendimento_pausado_ate ? new Date(payload.contato.atendimento_pausado_ate) : null;
+        const isPausado = pausadoAte && pausadoAte.getTime && pausadoAte.getTime() > Date.now();
+
+        let label = modo === "humano" ? "HUMANO" : "BOT";
+        if (modo !== "humano" && isPausado) {
+          label += ` (pausado até ${pausadoAte.toLocaleString()})`;
+        }
+
+        attBadge.textContent = label;
+        btnAssumir.disabled = modo === "humano";
+        btnDevolver.disabled = modo !== "humano";
+      })();
+
+      btnAssumir.addEventListener("click", async () => {
+        try {
+          setError("");
+          setStatus("Assumindo atendimento…");
+          const empresaId = Number(empresaIdInput.value || 0);
+          if (!empresaId) throw new Error("Empresa ID inválido");
+          await apiPost(adminUrl(`empresas/${empresaId}/conversas/${payload.contato.id}/assumir`));
+          await selectContato(payload.contato.id);
+          setStatus("Atendimento assumido");
+        } catch (e) {
+          setError(e.message);
+          setStatus("");
+        }
+      });
+
+      btnDevolver.addEventListener("click", async () => {
+        try {
+          setError("");
+          setStatus("Devolvendo para bot…");
+          const empresaId = Number(empresaIdInput.value || 0);
+          if (!empresaId) throw new Error("Empresa ID inválido");
+          await apiPost(adminUrl(`empresas/${empresaId}/conversas/${payload.contato.id}/devolver`));
+          await selectContato(payload.contato.id);
+          setStatus("Devolvido para bot");
+        } catch (e) {
+          setError(e.message);
+          setStatus("");
+        }
+      });
 
       btnSaveContato.addEventListener("click", async () => {
         try {

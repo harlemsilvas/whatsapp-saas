@@ -98,3 +98,61 @@ exports.findOrCreate = async (empresaId, telefone, { nome = null } = {}) => {
   }
   return contato;
 };
+
+exports.assumirAtendimento = async (
+  empresaId,
+  contatoId,
+  { assumidoPor = null, pauseMinutes = 60 } = {},
+) => {
+  const mins = Number.isFinite(Number(pauseMinutes))
+    ? Math.max(0, Math.trunc(Number(pauseMinutes)))
+    : 60;
+  const pausedUntil = mins ? new Date(Date.now() + mins * 60 * 1000) : null;
+
+  const result = await db.query(
+    `UPDATE contatos
+     SET
+       atendimento_modo = 'humano',
+       atendimento_pausado_ate = $3,
+       ultimo_humano_em = NOW(),
+       atendimento_assumido_por = COALESCE($4, atendimento_assumido_por)
+     WHERE empresa_id = $1 AND id = $2
+     RETURNING *`,
+    [empresaId, contatoId, pausedUntil, assumidoPor],
+  );
+  return result.rows[0];
+};
+
+exports.devolverParaBot = async (empresaId, contatoId) => {
+  const result = await db.query(
+    `UPDATE contatos
+     SET
+       atendimento_modo = 'bot',
+       atendimento_pausado_ate = NULL,
+       atendimento_assumido_por = NULL
+     WHERE empresa_id = $1 AND id = $2
+     RETURNING *`,
+    [empresaId, contatoId],
+  );
+  return result.rows[0];
+};
+
+exports.pausarBot = async (
+  empresaId,
+  contatoId,
+  { pauseMinutes = 60 } = {},
+) => {
+  const mins = Number.isFinite(Number(pauseMinutes))
+    ? Math.max(0, Math.trunc(Number(pauseMinutes)))
+    : 60;
+  const pausedUntil = mins ? new Date(Date.now() + mins * 60 * 1000) : null;
+
+  const result = await db.query(
+    `UPDATE contatos
+     SET atendimento_pausado_ate = $3
+     WHERE empresa_id = $1 AND id = $2
+     RETURNING *`,
+    [empresaId, contatoId, pausedUntil],
+  );
+  return result.rows[0];
+};

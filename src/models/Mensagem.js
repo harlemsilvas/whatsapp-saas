@@ -36,6 +36,7 @@ exports.create = async (...args) => {
   let direcao;
   let conteudo;
   let tipo;
+  let waMessageId;
 
   if (args.length === 1 && args[0] && typeof args[0] === "object") {
     empresaId = args[0].empresa_id;
@@ -43,6 +44,7 @@ exports.create = async (...args) => {
     direcao = args[0].direcao;
     conteudo = args[0].conteudo;
     tipo = args[0].tipo ?? "text";
+    waMessageId = args[0].wa_message_id ?? null;
   } else {
     empresaId = args[0];
     const payload = args[1] || {};
@@ -50,15 +52,29 @@ exports.create = async (...args) => {
     direcao = payload.direcao;
     conteudo = payload.conteudo;
     tipo = payload.tipo ?? "text";
+    waMessageId = payload.wa_message_id ?? null;
   }
 
   const result = await db.query(
-    `INSERT INTO mensagens (empresa_id, contato_id, direcao, conteudo, tipo)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO mensagens (empresa_id, contato_id, direcao, conteudo, tipo, wa_message_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [empresaId, contatoId, direcao, conteudo, tipo],
+    [empresaId, contatoId, direcao, conteudo, tipo, waMessageId],
   );
   return result.rows[0];
+};
+
+exports.existsByWaMessageId = async (empresaId, waMessageId) => {
+  const id = waMessageId ? String(waMessageId).trim() : "";
+  if (!id) return false;
+  const result = await db.query(
+    `SELECT 1
+     FROM mensagens
+     WHERE empresa_id = $1 AND wa_message_id = $2
+     LIMIT 1`,
+    [empresaId, id],
+  );
+  return result.rowCount > 0;
 };
 
 exports.remove = async (empresaId, mensagemId) => {

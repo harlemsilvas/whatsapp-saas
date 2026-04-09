@@ -35,6 +35,7 @@ exports.processar = async (payload) => {
 
   const mensagem = msg.text?.body;
   const numero = normalizeTelefoneBR(msg.from);
+  const waMessageId = msg.id ? String(msg.id).trim() : null;
 
   if (!mensagem) return;
   if (!numero) return;
@@ -86,6 +87,18 @@ exports.processar = async (payload) => {
 
   logger.info("Mensagem recebida", { empresaId: empresa_id });
 
+  // 🔹 0. idempotência: WhatsApp pode reenviar o mesmo evento
+  if (waMessageId) {
+    const already = await Mensagem.existsByWaMessageId(empresa_id, waMessageId);
+    if (already) {
+      logger.info("Webhook duplicado ignorado (wa_message_id)", {
+        empresaId: empresa_id,
+        wa_message_id: waMessageId,
+      });
+      return;
+    }
+  }
+
   // 🔹 1. buscar ou criar contato
   const contato = await Contato.findOrCreate(empresa_id, numero);
   if (!contato) return;
@@ -96,7 +109,29 @@ exports.processar = async (payload) => {
     contato_id: contato.id,
     direcao: "entrada",
     conteudo: mensagem,
+    wa_message_id: waMessageId,
   });
+
+  // 🔹 2.1 handoff: se humano assumiu ou bot está pausado, não responder
+  const modo = String(contato.atendimento_modo || "bot").toLowerCase();
+  const pausadoAteMs = contato.atendimento_pausado_ate
+    ? new Date(contato.atendimento_pausado_ate).getTime()
+    : 0;
+  if (modo === "humano") {
+    logger.info("Bot suprimido: atendimento humano ativo", {
+      empresaId: empresa_id,
+      contatoId: contato.id,
+    });
+    return;
+  }
+  if (pausadoAteMs && pausadoAteMs > Date.now()) {
+    logger.info("Bot suprimido: em pausa", {
+      empresaId: empresa_id,
+      contatoId: contato.id,
+      pausadoAte: contato.atendimento_pausado_ate,
+    });
+    return;
+  }
 
   // 🔹 3. verificar fluxo
   let resposta = await fluxoService.verificar(empresa_id, mensagem);

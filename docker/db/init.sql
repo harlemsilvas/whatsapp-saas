@@ -19,6 +19,10 @@ CREATE TABLE contatos (
   nome VARCHAR(255),
   telefone VARCHAR(20) NOT NULL,
   tags TEXT[],
+  atendimento_modo VARCHAR(10) NOT NULL DEFAULT 'bot',
+  atendimento_pausado_ate TIMESTAMP NULL,
+  ultimo_humano_em TIMESTAMP NULL,
+  atendimento_assumido_por VARCHAR(100) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -31,8 +35,14 @@ CREATE TABLE mensagens (
   conteudo TEXT,
   tipo VARCHAR(20) DEFAULT 'text',
   lida_em TIMESTAMP NULL,
+  wa_message_id VARCHAR(128) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Idempotência: evita processar o mesmo evento do WhatsApp mais de uma vez
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mensagens_empresa_wa_message_id
+  ON mensagens (empresa_id, wa_message_id)
+  WHERE wa_message_id IS NOT NULL;
 
 -- Fluxos automatizados
 CREATE TABLE fluxos (

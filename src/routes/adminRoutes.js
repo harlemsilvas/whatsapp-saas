@@ -36,4 +36,16 @@ router.post(
   conversaController.enviarManual,
 );
 
+router.post(
+  "/empresas/:empresaId/conversas/:contatoId/assumir",
+  apiKeyAuth(),
+  conversaController.assumirAtendimento,
+);
+
+router.post(
+  "/empresas/:empresaId/conversas/:contatoId/devolver",
+  apiKeyAuth(),
+  conversaController.devolverParaBot,
+);
+
 module.exports = router;
