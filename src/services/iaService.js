@@ -506,6 +506,41 @@ async function callOpenAI({
 }
 
 exports.gerarResposta = async (input) => {
+  function buildSmartFallback(messageText) {
+    const text = String(messageText || "").trim();
+    if (!text) return null;
+
+    const lower = text.toLowerCase();
+
+    const asksPrice =
+      /(quanto custa|qual o pre[cç]o|pre[cç]o\?|valor\?|qual o valor|custa\?)/i.test(
+        text,
+      );
+    if (asksPrice) {
+      // Uma única pergunta objetiva para destravar.
+      return "Para eu te passar o preço certinho, qual o código do produto (ex.: PH6017A ou PH6018)?";
+    }
+
+    const asksFrete = /(frete|entrega|envio)/i.test(text);
+    if (asksFrete) {
+      return "Para calcular o frete, me informe seu CEP.";
+    }
+
+    const asksEndereco = /(endereço|endere[cç]o|local|retirada)/i.test(text);
+    if (asksEndereco) {
+      // Evita inventar: pede confirmação em 1 pergunta.
+      return "Você quer retirada no local ou entrega?";
+    }
+
+    const asksHorario =
+      /(hor[aá]rio|atende(m)? hoje|voc[eê]s atendem|atendimento)/i.test(lower);
+    if (asksHorario) {
+      return "Você quer o horário de atendimento humano ou do atendimento automático?";
+    }
+
+    return null;
+  }
+
   const fallbackText =
     env.optional("AI_FALLBACK_TEXT", null) ||
     "No momento não consegui responder automaticamente. Você pode detalhar um pouco mais ou aguardar um atendente?";
@@ -522,10 +557,10 @@ exports.gerarResposta = async (input) => {
       contato,
     });
 
-    if (result.disabled) return fallbackText;
+    if (result.disabled) return buildSmartFallback(mensagem) || fallbackText;
 
     const reply = result.reply ? String(result.reply).trim() : "";
-    if (!reply) return fallbackText;
+    if (!reply) return buildSmartFallback(mensagem) || fallbackText;
 
     if (result.usage) {
       logger.info("OpenAI usage", {
@@ -538,6 +573,6 @@ exports.gerarResposta = async (input) => {
     return reply;
   } catch (err) {
     logger.error("Erro inesperado no iaService", { message: err.message });
-    return fallbackText;
+    return buildSmartFallback(mensagem) || fallbackText;
   }
 };
