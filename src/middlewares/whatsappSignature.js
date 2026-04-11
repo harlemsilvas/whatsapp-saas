@@ -15,6 +15,14 @@ function computeSignature256Hex(appSecret, rawBodyBuffer) {
   return `sha256=${hmac.digest("hex")}`;
 }
 
+function normalizeSignatureHeader(value) {
+  const s = String(value || "").trim();
+  if (!s) return "";
+  // tolera variações como "SHA256=..." ou espaços
+  const lower = s.toLowerCase().replace(/\s+/g, "");
+  return lower;
+}
+
 function getHeader(req, name) {
   return req.get(name) || req.get(name.toLowerCase()) || "";
 }
@@ -51,7 +59,8 @@ function verifyWhatsAppWebhookSignature(req, res, next) {
   }
 
   const signature = getHeader(req, "X-Hub-Signature-256");
-  if (!signature) {
+  const signatureNorm = normalizeSignatureHeader(signature);
+  if (!signatureNorm) {
     logger.warn("Webhook sem X-Hub-Signature-256");
     return res.sendStatus(401);
   }
@@ -66,12 +75,13 @@ function verifyWhatsAppWebhookSignature(req, res, next) {
   }
 
   const expected = computeSignature256Hex(appSecret, rawBody);
-  const ok = safeEqual(signature, expected);
+  const expectedNorm = normalizeSignatureHeader(expected);
+  const ok = safeEqual(signatureNorm, expectedNorm);
 
   if (!ok) {
     logger.warn("Assinatura inválida no webhook", {
-      signaturePrefix: String(signature).slice(0, 20),
-      expectedPrefix: String(expected).slice(0, 20),
+      signaturePrefix: String(signatureNorm).slice(0, 20),
+      expectedPrefix: String(expectedNorm).slice(0, 20),
     });
     return res.sendStatus(401);
   }

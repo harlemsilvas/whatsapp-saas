@@ -312,6 +312,48 @@
       return String(tags);
     }
 
+    function parseBotStatusDetails(raw) {
+      if (!raw) return null;
+      if (typeof raw === "object") return raw;
+      const s = String(raw || "").trim();
+      if (!s) return null;
+      try {
+        return JSON.parse(s);
+      } catch {
+        return { message: s };
+      }
+    }
+
+    function formatBotStatus(contato) {
+      const reason = String(contato?.bot_status_reason || "").trim();
+      if (!reason) return null;
+
+      const details = parseBotStatusDetails(contato?.bot_status_details || null);
+      const at = contato?.bot_status_at ? new Date(contato.bot_status_at) : null;
+
+      let label = "";
+      if (reason === "human_active") label = "Suprimido: humano ativo";
+      else if (reason === "paused") label = "Suprimido: em pausa";
+      else if (reason === "duplicate_wa_message_id") label = "Ignorado: duplicado";
+      else if (reason === "outside_24h_window") {
+        label = "Não enviado: fora da janela 24h";
+
+        const outcome = details?.template?.outcome;
+        if (outcome === "sent") label += " (template enviado)";
+        else if (outcome === "not_configured") label += " (sem template)";
+        else if (outcome === "failed") label += " (template falhou)";
+      } else {
+        label = `Status: ${reason}`;
+      }
+
+      return {
+        reason,
+        label,
+        at,
+        details,
+      };
+    }
+
     function renderConversas(items) {
       conversasEl.innerHTML = "";
       for (const c of items) {
@@ -340,8 +382,14 @@
         const mode = String(c.atendimento_modo || "bot").toLowerCase();
         modeBadge.textContent = mode === "humano" ? "HUMANO" : "BOT";
 
+        const botStatus = formatBotStatus(c);
+        const botBadge = document.createElement("span");
+        botBadge.className = "badge";
+        botBadge.textContent = botStatus ? botStatus.label : "";
+
         meta.appendChild(badge);
         meta.appendChild(modeBadge);
+        if (botStatus) meta.appendChild(botBadge);
 
         li.appendChild(title);
         li.appendChild(subtitle);
@@ -364,10 +412,16 @@
       const safeName = escapeHtml(payload.contato.nome || "");
       const safeTags = escapeHtml(tagsToString(payload.contato.tags || null));
 
+      const botStatus = formatBotStatus(payload.contato);
+      const botLine = botStatus
+        ? `Último motivo do bot: ${escapeHtml(botStatus.label)}${botStatus.at ? ` • ${botStatus.at.toLocaleString()}` : ""}`
+        : "";
+
       head.innerHTML = `
         <div style="flex:1">
           <div><strong>${safeName || escapeHtml(displayPhone)}</strong></div>
           <div class="muted">${escapeHtml(displayPhone)} • Contato #${payload.contato.id}</div>
+          ${botLine ? `<div class="muted" style="margin-top:6px">${botLine}</div>` : ""}
           <div class="row" style="margin-top:8px">
             <div>
               <label>Nome</label><br />

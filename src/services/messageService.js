@@ -36,7 +36,12 @@ async function maybeSendReengagementTemplate({
       hint: "Defina WHATSAPP_REENGAGE_TEMPLATE_NAME e aprove um template na Meta",
       graph: outsideWindowGraph || null,
     });
-    return;
+    return {
+      attempted: false,
+      outcome: "not_configured",
+      templateName: null,
+      languageCode: null,
+    };
   }
 
   const languageCode = String(
@@ -55,6 +60,13 @@ async function maybeSendReengagementTemplate({
   }
 
   await whatsappService.enviarTemplateMensagem(sendTo, templateName, options);
+
+  return {
+    attempted: true,
+    outcome: "sent",
+    templateName,
+    languageCode,
+  };
 }
 
 exports.processar = async (payload) => {
@@ -132,8 +144,18 @@ exports.processar = async (payload) => {
   if (waMessageId) {
     const already = await Mensagem.existsByWaMessageId(empresa_id, waMessageId);
     if (already) {
+      const existingContato = await Contato.findByTelefone(empresa_id, numero);
+      if (existingContato) {
+        await Contato.setBotStatus(empresa_id, existingContato.id, {
+          reason: "duplicate_wa_message_id",
+          details: { wa_message_id: waMessageId },
+        });
+      }
+
       logger.info("Webhook duplicado ignorado (wa_message_id)", {
         empresaId: empresa_id,
+        contatoId: existingContato?.id || null,
+        botReason: "duplicate_wa_message_id",
         wa_message_id: waMessageId,
       });
       return;
@@ -159,17 +181,27 @@ exports.processar = async (payload) => {
     ? new Date(contato.atendimento_pausado_ate).getTime()
     : 0;
   if (modo === "humano") {
+    await Contato.setBotStatus(empresa_id, contato.id, {
+      reason: "human_active",
+      details: { atendimento_modo: "humano" },
+    });
     logger.info("Bot suprimido: atendimento humano ativo", {
       empresaId: empresa_id,
       contatoId: contato.id,
+      botReason: "human_active",
     });
     return;
   }
   if (pausadoAteMs && pausadoAteMs > Date.now()) {
+    await Contato.setBotStatus(empresa_id, contato.id, {
+      reason: "paused",
+      details: { pausadoAte: contato.atendimento_pausado_ate },
+    });
     logger.info("Bot suprimido: em pausa", {
       empresaId: empresa_id,
       contatoId: contato.id,
       pausadoAte: contato.atendimento_pausado_ate,
+      botReason: "paused",
     });
     return;
   }
@@ -242,15 +274,20 @@ exports.processar = async (payload) => {
       await whatsappService.enviarMensagem(sendTo, resposta);
     } catch (err) {
       if (err && err.whatsappReason === "outside_24h_window") {
+        await Contato.setBotStatus(empresa_id, contato.id, {
+          reason: "outside_24h_window",
+          details: { graph: err.whatsappGraph || null },
+        });
         logger.warn("Resposta não enviada (fora da janela 24h)", {
           empresaId: empresa_id,
           contatoId: contato.id,
           to: maskPhone(sendTo),
           graph: err.whatsappGraph || null,
+          botReason: "outside_24h_window",
         });
 
         try {
-          await maybeSendReengagementTemplate({
+          const templateResult = await maybeSendReengagementTemplate({
             sendTo,
             empresa,
             useEnvWhatsApp,
@@ -258,7 +295,26 @@ exports.processar = async (payload) => {
             empresaId: empresa_id,
             contatoId: contato.id,
           });
+
+          await Contato.setBotStatus(empresa_id, contato.id, {
+            reason: "outside_24h_window",
+            details: {
+              graph: err.whatsappGraph || null,
+              template: templateResult,
+            },
+          });
         } catch (templateErr) {
+          await Contato.setBotStatus(empresa_id, contato.id, {
+            reason: "outside_24h_window",
+            details: {
+              graph: err.whatsappGraph || null,
+              template: {
+                attempted: true,
+                outcome: "failed",
+                message: templateErr.message,
+              },
+            },
+          });
           logger.warn("Falha ao enviar template de retomada", {
             empresaId: empresa_id,
             contatoId: contato.id,
@@ -278,15 +334,20 @@ exports.processar = async (payload) => {
       });
     } catch (err) {
       if (err && err.whatsappReason === "outside_24h_window") {
+        await Contato.setBotStatus(empresa_id, contato.id, {
+          reason: "outside_24h_window",
+          details: { graph: err.whatsappGraph || null },
+        });
         logger.warn("Resposta não enviada (fora da janela 24h)", {
           empresaId: empresa_id,
           contatoId: contato.id,
           to: maskPhone(sendTo),
           graph: err.whatsappGraph || null,
+          botReason: "outside_24h_window",
         });
 
         try {
-          await maybeSendReengagementTemplate({
+          const templateResult = await maybeSendReengagementTemplate({
             sendTo,
             empresa,
             useEnvWhatsApp,
@@ -294,7 +355,26 @@ exports.processar = async (payload) => {
             empresaId: empresa_id,
             contatoId: contato.id,
           });
+
+          await Contato.setBotStatus(empresa_id, contato.id, {
+            reason: "outside_24h_window",
+            details: {
+              graph: err.whatsappGraph || null,
+              template: templateResult,
+            },
+          });
         } catch (templateErr) {
+          await Contato.setBotStatus(empresa_id, contato.id, {
+            reason: "outside_24h_window",
+            details: {
+              graph: err.whatsappGraph || null,
+              template: {
+                attempted: true,
+                outcome: "failed",
+                message: templateErr.message,
+              },
+            },
+          });
           logger.warn("Falha ao enviar template de retomada", {
             empresaId: empresa_id,
             contatoId: contato.id,
@@ -314,6 +394,12 @@ exports.processar = async (payload) => {
     contato_id: contato.id,
     direcao: "saida",
     conteudo: resposta,
+  });
+
+  // Limpamos o último motivo de não-resposta quando o bot respondeu com sucesso.
+  await Contato.setBotStatus(empresa_id, contato.id, {
+    reason: null,
+    details: null,
   });
 
   logger.info("Mensagem respondida", { empresaId: empresa_id });

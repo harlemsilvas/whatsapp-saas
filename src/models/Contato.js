@@ -1,4 +1,5 @@
 const db = require("../config/database");
+const logger = require("../utils/logger");
 const { normalizeTelefoneBR } = require("../utils/phone");
 
 exports.listByEmpresaId = async (
@@ -155,4 +156,50 @@ exports.pausarBot = async (
     [empresaId, contatoId, pausedUntil],
   );
   return result.rows[0];
+};
+
+exports.setBotStatus = async (
+  empresaId,
+  contatoId,
+  { reason = null, details = null } = {},
+) => {
+  const reasonValue = reason === null ? null : String(reason).trim() || null;
+
+  let detailsValue = null;
+  if (details === null || typeof details === "undefined") {
+    detailsValue = null;
+  } else if (typeof details === "string") {
+    detailsValue = details.trim() || null;
+  } else {
+    try {
+      detailsValue = JSON.stringify(details);
+    } catch {
+      detailsValue = String(details);
+    }
+  }
+
+  try {
+    const result = await db.query(
+      `UPDATE contatos
+       SET
+         bot_status_reason = $3,
+         bot_status_details = $4,
+         bot_status_at = CASE WHEN $3::text IS NULL THEN NULL ELSE NOW() END
+       WHERE empresa_id = $1 AND id = $2
+       RETURNING *`,
+      [empresaId, contatoId, reasonValue, detailsValue],
+    );
+    return result.rows[0];
+  } catch (err) {
+    const msg = String(err?.message || "");
+    const missingColumn = err?.code === "42703" || msg.includes("bot_status_");
+    if (missingColumn) {
+      logger.warn(
+        "Colunas bot_status_* ausentes; ignorando atualização de status do bot",
+        { empresaId, contatoId },
+      );
+      return exports.findById(empresaId, contatoId);
+    }
+    throw err;
+  }
 };

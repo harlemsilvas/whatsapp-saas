@@ -23,6 +23,9 @@ CREATE TABLE contatos (
   atendimento_pausado_ate TIMESTAMP NULL,
   ultimo_humano_em TIMESTAMP NULL,
   atendimento_assumido_por VARCHAR(100) NULL,
+  bot_status_reason VARCHAR(40) NULL,
+  bot_status_details TEXT NULL,
+  bot_status_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
