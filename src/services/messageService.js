@@ -93,12 +93,9 @@ exports.processar = async (payload) => {
   if (!mensagem) return;
   if (!numero) return;
 
-  let stage = "resolve_empresa";
-  let contatoForDebug = null;
-  let empresaIdForDebug = null;
-
   let empresa;
   let useEnvWhatsApp = false;
+
   if (metaPhoneNumberId) {
     empresa = await Empresa.findByPhoneNumberId(String(metaPhoneNumberId));
     if (!empresa) {
@@ -126,144 +123,143 @@ exports.processar = async (payload) => {
       }
 
       useEnvWhatsApp = true;
-      empresaIdForDebug = empresa_id;
       logger.warn(
         "Empresa não encontrada para phone_number_id; usando fallback",
+        {
+          phone_number_id: metaPhoneNumberId,
+          fallbackEmpresaId,
+        },
+      );
+    }
+  } else {
+    // Compatibilidade: se o payload não trouxer metadata, mantém o MVP fixo.
+    empresa = await Empresa.findById(1);
+    if (!empresa) return;
+  }
 
-      try {
-        stage = "idempotencia";
-        // 🔹 0. idempotência: WhatsApp pode reenviar o mesmo evento
-        if (waMessageId) {
-          const already = await Mensagem.existsByWaMessageId(empresa_id, waMessageId);
-          if (already) {
-            stage = "idempotencia_duplicate";
-            const existingContato = await Contato.findByTelefone(empresa_id, numero);
-            if (existingContato) {
-              await Contato.setBotStatus(empresa_id, existingContato.id, {
-                reason: "duplicate_wa_message_id",
-                details: { wa_message_id: waMessageId },
-              });
-            }
+  const empresa_id = empresa.id;
+  logger.info("Mensagem recebida", { empresaId: empresa_id });
 
-            logger.info("Webhook duplicado ignorado (wa_message_id)", {
-              empresaId: empresa_id,
-              contatoId: existingContato?.id || null,
-              botReason: "duplicate_wa_message_id",
-              wa_message_id: waMessageId,
-            });
-            return;
-          }
+  let stage = "start";
+  let contatoIdForDebug = null;
+
+  try {
+    stage = "idempotencia";
+    if (waMessageId) {
+      const already = await Mensagem.existsByWaMessageId(
+        empresa_id,
+        waMessageId,
+      );
+      if (already) {
+        const existingContato = await Contato.findByTelefone(
+          empresa_id,
+          numero,
+        );
+        if (existingContato) {
+          await Contato.setBotStatus(empresa_id, existingContato.id, {
+            reason: "duplicate_wa_message_id",
+            details: { wa_message_id: waMessageId },
+          });
         }
 
-        stage = "contato_find_or_create";
-        // 🔹 1. buscar ou criar contato
-        const contato = await Contato.findOrCreate(empresa_id, numero);
-        if (!contato) return;
-        contatoForDebug = contato;
-
-        stage = "mensagem_create_in";
-        // 🔹 2. salvar mensagem de entrada
-        await Mensagem.create({
-          empresa_id,
-          contato_id: contato.id,
-          direcao: "entrada",
-          conteudo: mensagem,
+        logger.info("Webhook duplicado ignorado (wa_message_id)", {
+          empresaId: empresa_id,
+          contatoId: existingContato?.id || null,
+          botReason: "duplicate_wa_message_id",
           wa_message_id: waMessageId,
         });
+        return;
+      }
+    }
 
-        stage = "handoff_reload_contato";
-        // 🔹 2.1 handoff: se humano assumiu ou bot está pausado, não responder
-        // Recarrega o contato para evitar race (ex.: admin assume atendimento ao mesmo tempo que chega webhook).
-        const contatoAtual = (await Contato.findById(empresa_id, contato.id)) || contato;
-        contatoForDebug = contatoAtual;
+    stage = "contato_find_or_create";
+    const contato = await Contato.findOrCreate(empresa_id, numero);
+    if (!contato) return;
+    contatoIdForDebug = contato.id;
 
-        const modo = String(contatoAtual.atendimento_modo || "bot").toLowerCase();
-        const pausadoAteMs = contatoAtual.atendimento_pausado_ate
-          ? new Date(contatoAtual.atendimento_pausado_ate).getTime()
-          : 0;
-        if (modo === "humano") {
-          stage = "handoff_human_active";
-          await Contato.setBotStatus(empresa_id, contatoAtual.id, {
-            reason: "human_active",
-            details: { atendimento_modo: "humano" },
-          });
-          logger.info("Bot suprimido: atendimento humano ativo", {
-            empresaId: empresa_id,
-            contatoId: contatoAtual.id,
-            botReason: "human_active",
-          });
-          return;
-        }
-        if (pausadoAteMs && pausadoAteMs > Date.now()) {
-          stage = "handoff_paused";
-          await Contato.setBotStatus(empresa_id, contatoAtual.id, {
-            reason: "paused",
-            details: { pausadoAte: contatoAtual.atendimento_pausado_ate },
-          });
-          logger.info("Bot suprimido: em pausa", {
-            empresaId: empresa_id,
-            contatoId: contatoAtual.id,
-            pausadoAte: contatoAtual.atendimento_pausado_ate,
-            botReason: "paused",
-          });
-          return;
-        }
+    stage = "mensagem_create_in";
+    await Mensagem.create({
+      empresa_id,
+      contato_id: contato.id,
+      direcao: "entrada",
+      conteudo: mensagem,
+      wa_message_id: waMessageId,
     });
-    return;
-  }
-  if (pausadoAteMs && pausadoAteMs > Date.now()) {
-    await Contato.setBotStatus(empresa_id, contatoAtual.id, {
-      reason: "paused",
-      details: { pausadoAte: contatoAtual.atendimento_pausado_ate },
-    });
-    logger.info("Bot suprimido: em pausa", {
-      empresaId: empresa_id,
-      contatoId: contatoAtual.id,
-      pausadoAte: contatoAtual.atendimento_pausado_ate,
-      botReason: "paused",
-    });
-    return;
-  }
+
+    stage = "handoff_reload_contato";
+    // Recarrega o contato para evitar race (ex.: admin assume atendimento ao mesmo tempo que chega webhook).
+    const contatoAtual =
+      (await Contato.findById(empresa_id, contato.id)) || contato;
+    contatoIdForDebug = contatoAtual.id;
+
+    const modo = String(contatoAtual.atendimento_modo || "bot").toLowerCase();
+    const pausadoAteMs = contatoAtual.atendimento_pausado_ate
+      ? new Date(contatoAtual.atendimento_pausado_ate).getTime()
+      : 0;
+
+    if (modo === "humano") {
+      stage = "handoff_human_active";
+      await Contato.setBotStatus(empresa_id, contatoAtual.id, {
+        reason: "human_active",
+        details: { atendimento_modo: "humano" },
+      });
+      logger.info("Bot suprimido: atendimento humano ativo", {
+        empresaId: empresa_id,
+        contatoId: contatoAtual.id,
+        botReason: "human_active",
+      });
+      return;
+    }
+
+    if (pausadoAteMs && pausadoAteMs > Date.now()) {
+      stage = "handoff_paused";
+      await Contato.setBotStatus(empresa_id, contatoAtual.id, {
+        reason: "paused",
+        details: { pausadoAte: contatoAtual.atendimento_pausado_ate },
+      });
+      logger.info("Bot suprimido: em pausa", {
+        empresaId: empresa_id,
+        contatoId: contatoAtual.id,
+        pausadoAte: contatoAtual.atendimento_pausado_ate,
+        botReason: "paused",
+      });
+      return;
+    }
 
     stage = "fluxo_verificar";
-    // 🔹 3. verificar fluxo
     let resposta = await fluxoService.verificar(empresa_id, mensagem);
 
     stage = "ia_or_fallback";
-    // 🔹 4. fallback IA
     if (!resposta) {
-    const maxCtx = Math.max(
-      0,
-      Math.trunc(Number(process.env.OPENAI_MAX_CONTEXT_MESSAGES || 8) || 8),
-    );
-
-    let contextoMensagens = [];
-    if (maxCtx > 0) {
-      const recent = await Conversa.listMensagensByContato(
-        empresa_id,
-        contato.id,
-        {
-          limit: maxCtx,
-          offset: 0,
-          order: "desc",
-        },
+      const maxCtx = Math.max(
+        0,
+        Math.trunc(Number(process.env.OPENAI_MAX_CONTEXT_MESSAGES || 8) || 8),
       );
 
-      // recent vem DESC; coloca em ordem cronológica
-      const ordered = recent.slice().reverse();
+      let contextoMensagens = [];
+      if (maxCtx > 0) {
+        const recent = await Conversa.listMensagensByContato(
+          empresa_id,
+          contato.id,
+          {
+            limit: maxCtx,
+            offset: 0,
+            order: "desc",
+          },
+        );
 
-      // evita duplicar a mensagem atual (já foi salva e virá no histórico)
-      const withoutLast = ordered.length
-        ? ordered.slice(0, ordered.length - 1)
-        : ordered;
+        const ordered = recent.slice().reverse();
+        const withoutLast = ordered.length
+          ? ordered.slice(0, ordered.length - 1)
+          : ordered;
 
-      contextoMensagens = withoutLast
-        .map((m) => ({
-          role: m.direcao === "saida" ? "assistant" : "user",
-          content: m.conteudo,
-        }))
-        .filter((m) => m.content);
-    }
+        contextoMensagens = withoutLast
+          .map((m) => ({
+            role: m.direcao === "saida" ? "assistant" : "user",
+            content: m.conteudo,
+          }))
+          .filter((m) => m.content);
+      }
 
       resposta = await iaService.gerarResposta({
         mensagem,
@@ -273,145 +269,102 @@ exports.processar = async (payload) => {
     }
 
     stage = "whatsapp_send";
-    // 🔹 5. enviar resposta
     let sendTo = numero;
+
+    const sendAndHandleOutsideWindow = async (sendFn) => {
+      try {
+        await sendFn();
+      } catch (err) {
+        if (err && err.whatsappReason === "outside_24h_window") {
+          await Contato.setBotStatus(empresa_id, contato.id, {
+            reason: "outside_24h_window",
+            details: { graph: err.whatsappGraph || null },
+          });
+
+          logger.warn("Resposta não enviada (fora da janela 24h)", {
+            empresaId: empresa_id,
+            contatoId: contato.id,
+            to: maskPhone(sendTo),
+            graph: err.whatsappGraph || null,
+            botReason: "outside_24h_window",
+          });
+
+          try {
+            const templateResult = await maybeSendReengagementTemplate({
+              sendTo,
+              empresa,
+              useEnvWhatsApp,
+              outsideWindowGraph: err.whatsappGraph || null,
+              empresaId: empresa_id,
+              contatoId: contato.id,
+            });
+
+            await Contato.setBotStatus(empresa_id, contato.id, {
+              reason: "outside_24h_window",
+              details: {
+                graph: err.whatsappGraph || null,
+                template: templateResult,
+              },
+            });
+          } catch (templateErr) {
+            await Contato.setBotStatus(empresa_id, contato.id, {
+              reason: "outside_24h_window",
+              details: {
+                graph: err.whatsappGraph || null,
+                template: {
+                  attempted: true,
+                  outcome: "failed",
+                  message: templateErr.message,
+                },
+              },
+            });
+
+            logger.warn("Falha ao enviar template de retomada", {
+              empresaId: empresa_id,
+              contatoId: contato.id,
+              to: maskPhone(sendTo),
+              message: templateErr.message,
+            });
+          }
+
+          return { aborted: true };
+        }
+        throw err;
+      }
+      return { aborted: false };
+    };
+
     if (useEnvWhatsApp) {
-    const isProd = process.env.NODE_ENV === "production";
-    const meuTelefone = normalizeTelefoneBR(process.env.MEU_TELEFONE);
-
-    // Quando o payload é exemplo (phone_number_id fake), o "from" costuma ser um número
-    // que não está na lista permitida do ambiente de teste. Em dev, redireciona para o
-    // número cadastrado em MEU_TELEFONE para validar o pipeline.
-    if (!isProd && meuTelefone) {
-      if (meuTelefone !== numero) {
-        logger.warn("Fallback ativo: redirecionando envio para MEU_TELEFONE", {
-          originalTo: maskPhone(numero),
-          redirectedTo: maskPhone(meuTelefone),
-        });
-      }
-      sendTo = meuTelefone;
-    }
-
-    try {
-      await whatsappService.enviarMensagem(sendTo, resposta);
-    } catch (err) {
-      if (err && err.whatsappReason === "outside_24h_window") {
-        await Contato.setBotStatus(empresa_id, contato.id, {
-          reason: "outside_24h_window",
-          details: { graph: err.whatsappGraph || null },
-        });
-        logger.warn("Resposta não enviada (fora da janela 24h)", {
-          empresaId: empresa_id,
-          contatoId: contato.id,
-          to: maskPhone(sendTo),
-          graph: err.whatsappGraph || null,
-          botReason: "outside_24h_window",
-        });
-
-        try {
-          const templateResult = await maybeSendReengagementTemplate({
-            sendTo,
-            empresa,
-            useEnvWhatsApp,
-            outsideWindowGraph: err.whatsappGraph || null,
-            empresaId: empresa_id,
-            contatoId: contato.id,
-          });
-
-          await Contato.setBotStatus(empresa_id, contato.id, {
-            reason: "outside_24h_window",
-            details: {
-              graph: err.whatsappGraph || null,
-              template: templateResult,
+      const isProd = process.env.NODE_ENV === "production";
+      const meuTelefone = normalizeTelefoneBR(process.env.MEU_TELEFONE);
+      if (!isProd && meuTelefone) {
+        if (meuTelefone !== numero) {
+          logger.warn(
+            "Fallback ativo: redirecionando envio para MEU_TELEFONE",
+            {
+              originalTo: maskPhone(numero),
+              redirectedTo: maskPhone(meuTelefone),
             },
-          });
-        } catch (templateErr) {
-          await Contato.setBotStatus(empresa_id, contato.id, {
-            reason: "outside_24h_window",
-            details: {
-              graph: err.whatsappGraph || null,
-              template: {
-                attempted: true,
-                outcome: "failed",
-                message: templateErr.message,
-              },
-            },
-          });
-          logger.warn("Falha ao enviar template de retomada", {
-            empresaId: empresa_id,
-            contatoId: contato.id,
-            to: maskPhone(sendTo),
-            message: templateErr.message,
-          });
+          );
         }
-        return;
+        sendTo = meuTelefone;
       }
-      throw err;
-    }
+
+      const result = await sendAndHandleOutsideWindow(() =>
+        whatsappService.enviarMensagem(sendTo, resposta),
+      );
+      if (result.aborted) return;
     } else {
-    try {
-      await whatsappService.enviarMensagem(sendTo, resposta, {
-        token: empresa.whatsapp_token || null,
-        phoneId: empresa.phone_number_id || null,
-      });
-    } catch (err) {
-      if (err && err.whatsappReason === "outside_24h_window") {
-        await Contato.setBotStatus(empresa_id, contato.id, {
-          reason: "outside_24h_window",
-          details: { graph: err.whatsappGraph || null },
-        });
-        logger.warn("Resposta não enviada (fora da janela 24h)", {
-          empresaId: empresa_id,
-          contatoId: contato.id,
-          to: maskPhone(sendTo),
-          graph: err.whatsappGraph || null,
-          botReason: "outside_24h_window",
-        });
-
-        try {
-          const templateResult = await maybeSendReengagementTemplate({
-            sendTo,
-            empresa,
-            useEnvWhatsApp,
-            outsideWindowGraph: err.whatsappGraph || null,
-            empresaId: empresa_id,
-            contatoId: contato.id,
-          });
-
-          await Contato.setBotStatus(empresa_id, contato.id, {
-            reason: "outside_24h_window",
-            details: {
-              graph: err.whatsappGraph || null,
-              template: templateResult,
-            },
-          });
-        } catch (templateErr) {
-          await Contato.setBotStatus(empresa_id, contato.id, {
-            reason: "outside_24h_window",
-            details: {
-              graph: err.whatsappGraph || null,
-              template: {
-                attempted: true,
-                outcome: "failed",
-                message: templateErr.message,
-              },
-            },
-          });
-          logger.warn("Falha ao enviar template de retomada", {
-            empresaId: empresa_id,
-            contatoId: contato.id,
-            to: maskPhone(sendTo),
-            message: templateErr.message,
-          });
-        }
-        return;
-      }
-      throw err;
+      const result = await sendAndHandleOutsideWindow(() =>
+        whatsappService.enviarMensagem(sendTo, resposta, {
+          token: empresa.whatsapp_token || null,
+          phoneId: empresa.phone_number_id || null,
+        }),
+      );
+      if (result.aborted) return;
     }
-  }
 
     stage = "mensagem_create_out";
-    // 🔹 6. salvar resposta
     await Mensagem.create({
       empresa_id,
       contato_id: contato.id,
@@ -420,7 +373,6 @@ exports.processar = async (payload) => {
     });
 
     stage = "clear_bot_status";
-    // Limpamos o último motivo de não-resposta quando o bot respondeu com sucesso.
     await Contato.setBotStatus(empresa_id, contato.id, {
       reason: null,
       details: null,
@@ -428,10 +380,9 @@ exports.processar = async (payload) => {
 
     logger.info("Mensagem respondida", { empresaId: empresa_id });
   } catch (err) {
-    const contatoId = contatoForDebug?.id || null;
-    if (empresaIdForDebug && contatoId) {
+    if (contatoIdForDebug) {
       try {
-        await Contato.setBotStatus(empresaIdForDebug, contatoId, {
+        await Contato.setBotStatus(empresa_id, contatoIdForDebug, {
           reason: "internal_error",
           details: {
             stage,
@@ -439,7 +390,7 @@ exports.processar = async (payload) => {
           },
         });
       } catch {
-        // best-effort: não deixar a falha de observabilidade quebrar o processamento
+        // best-effort
       }
     }
     throw err;

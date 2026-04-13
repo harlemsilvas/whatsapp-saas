@@ -263,7 +263,8 @@ exports.debugConversa = async (req, res, next) => {
     const lastInbound = recent.find((m) => m.direcao === "entrada") || null;
     const lastOutbound = recent.find((m) => m.direcao === "saida") || null;
 
-    const lastInboundAt = lastInbound?.created_at
+    const lastInboundAt = lastInbound?.
+    created_at
       ? new Date(lastInbound.created_at)
       : null;
     const lastInboundAtMs = lastInboundAt?.getTime
