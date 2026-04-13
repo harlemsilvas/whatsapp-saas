@@ -93,6 +93,10 @@ exports.processar = async (payload) => {
   if (!mensagem) return;
   if (!numero) return;
 
+  let stage = "resolve_empresa";
+  let contatoForDebug = null;
+  let empresaIdForDebug = null;
+
   let empresa;
   let useEnvWhatsApp = false;
   if (metaPhoneNumberId) {
@@ -122,77 +126,88 @@ exports.processar = async (payload) => {
       }
 
       useEnvWhatsApp = true;
+      empresaIdForDebug = empresa_id;
       logger.warn(
         "Empresa não encontrada para phone_number_id; usando fallback",
-        {
-          phone_number_id: metaPhoneNumberId,
-          fallbackEmpresaId,
-        },
-      );
-    }
-  } else {
-    // Compatibilidade: se o payload não trouxer metadata, mantém o MVP fixo.
-    empresa = await Empresa.findById(1);
-    if (!empresa) return;
-  }
 
-  const empresa_id = empresa.id;
+      try {
+        stage = "idempotencia";
+        // 🔹 0. idempotência: WhatsApp pode reenviar o mesmo evento
+        if (waMessageId) {
+          const already = await Mensagem.existsByWaMessageId(empresa_id, waMessageId);
+          if (already) {
+            stage = "idempotencia_duplicate";
+            const existingContato = await Contato.findByTelefone(empresa_id, numero);
+            if (existingContato) {
+              await Contato.setBotStatus(empresa_id, existingContato.id, {
+                reason: "duplicate_wa_message_id",
+                details: { wa_message_id: waMessageId },
+              });
+            }
 
-  logger.info("Mensagem recebida", { empresaId: empresa_id });
+            logger.info("Webhook duplicado ignorado (wa_message_id)", {
+              empresaId: empresa_id,
+              contatoId: existingContato?.id || null,
+              botReason: "duplicate_wa_message_id",
+              wa_message_id: waMessageId,
+            });
+            return;
+          }
+        }
 
-  // 🔹 0. idempotência: WhatsApp pode reenviar o mesmo evento
-  if (waMessageId) {
-    const already = await Mensagem.existsByWaMessageId(empresa_id, waMessageId);
-    if (already) {
-      const existingContato = await Contato.findByTelefone(empresa_id, numero);
-      if (existingContato) {
-        await Contato.setBotStatus(empresa_id, existingContato.id, {
-          reason: "duplicate_wa_message_id",
-          details: { wa_message_id: waMessageId },
+        stage = "contato_find_or_create";
+        // 🔹 1. buscar ou criar contato
+        const contato = await Contato.findOrCreate(empresa_id, numero);
+        if (!contato) return;
+        contatoForDebug = contato;
+
+        stage = "mensagem_create_in";
+        // 🔹 2. salvar mensagem de entrada
+        await Mensagem.create({
+          empresa_id,
+          contato_id: contato.id,
+          direcao: "entrada",
+          conteudo: mensagem,
+          wa_message_id: waMessageId,
         });
-      }
 
-      logger.info("Webhook duplicado ignorado (wa_message_id)", {
-        empresaId: empresa_id,
-        contatoId: existingContato?.id || null,
-        botReason: "duplicate_wa_message_id",
-        wa_message_id: waMessageId,
-      });
-      return;
-    }
-  }
+        stage = "handoff_reload_contato";
+        // 🔹 2.1 handoff: se humano assumiu ou bot está pausado, não responder
+        // Recarrega o contato para evitar race (ex.: admin assume atendimento ao mesmo tempo que chega webhook).
+        const contatoAtual = (await Contato.findById(empresa_id, contato.id)) || contato;
+        contatoForDebug = contatoAtual;
 
-  // 🔹 1. buscar ou criar contato
-  const contato = await Contato.findOrCreate(empresa_id, numero);
-  if (!contato) return;
-
-  // 🔹 2. salvar mensagem de entrada
-  await Mensagem.create({
-    empresa_id,
-    contato_id: contato.id,
-    direcao: "entrada",
-    conteudo: mensagem,
-    wa_message_id: waMessageId,
-  });
-
-  // 🔹 2.1 handoff: se humano assumiu ou bot está pausado, não responder
-  // Recarrega o contato para evitar race (ex.: admin assume atendimento ao mesmo tempo que chega webhook).
-  const contatoAtual =
-    (await Contato.findById(empresa_id, contato.id)) || contato;
-
-  const modo = String(contatoAtual.atendimento_modo || "bot").toLowerCase();
-  const pausadoAteMs = contatoAtual.atendimento_pausado_ate
-    ? new Date(contatoAtual.atendimento_pausado_ate).getTime()
-    : 0;
-  if (modo === "humano") {
-    await Contato.setBotStatus(empresa_id, contatoAtual.id, {
-      reason: "human_active",
-      details: { atendimento_modo: "humano" },
-    });
-    logger.info("Bot suprimido: atendimento humano ativo", {
-      empresaId: empresa_id,
-      contatoId: contatoAtual.id,
-      botReason: "human_active",
+        const modo = String(contatoAtual.atendimento_modo || "bot").toLowerCase();
+        const pausadoAteMs = contatoAtual.atendimento_pausado_ate
+          ? new Date(contatoAtual.atendimento_pausado_ate).getTime()
+          : 0;
+        if (modo === "humano") {
+          stage = "handoff_human_active";
+          await Contato.setBotStatus(empresa_id, contatoAtual.id, {
+            reason: "human_active",
+            details: { atendimento_modo: "humano" },
+          });
+          logger.info("Bot suprimido: atendimento humano ativo", {
+            empresaId: empresa_id,
+            contatoId: contatoAtual.id,
+            botReason: "human_active",
+          });
+          return;
+        }
+        if (pausadoAteMs && pausadoAteMs > Date.now()) {
+          stage = "handoff_paused";
+          await Contato.setBotStatus(empresa_id, contatoAtual.id, {
+            reason: "paused",
+            details: { pausadoAte: contatoAtual.atendimento_pausado_ate },
+          });
+          logger.info("Bot suprimido: em pausa", {
+            empresaId: empresa_id,
+            contatoId: contatoAtual.id,
+            pausadoAte: contatoAtual.atendimento_pausado_ate,
+            botReason: "paused",
+          });
+          return;
+        }
     });
     return;
   }
@@ -210,11 +225,13 @@ exports.processar = async (payload) => {
     return;
   }
 
-  // 🔹 3. verificar fluxo
-  let resposta = await fluxoService.verificar(empresa_id, mensagem);
+    stage = "fluxo_verificar";
+    // 🔹 3. verificar fluxo
+    let resposta = await fluxoService.verificar(empresa_id, mensagem);
 
-  // 🔹 4. fallback IA
-  if (!resposta) {
+    stage = "ia_or_fallback";
+    // 🔹 4. fallback IA
+    if (!resposta) {
     const maxCtx = Math.max(
       0,
       Math.trunc(Number(process.env.OPENAI_MAX_CONTEXT_MESSAGES || 8) || 8),
@@ -248,16 +265,17 @@ exports.processar = async (payload) => {
         .filter((m) => m.content);
     }
 
-    resposta = await iaService.gerarResposta({
-      mensagem,
-      contextoMensagens,
-      contato,
-    });
-  }
+      resposta = await iaService.gerarResposta({
+        mensagem,
+        contextoMensagens,
+        contato,
+      });
+    }
 
-  // 🔹 5. enviar resposta
-  let sendTo = numero;
-  if (useEnvWhatsApp) {
+    stage = "whatsapp_send";
+    // 🔹 5. enviar resposta
+    let sendTo = numero;
+    if (useEnvWhatsApp) {
     const isProd = process.env.NODE_ENV === "production";
     const meuTelefone = normalizeTelefoneBR(process.env.MEU_TELEFONE);
 
@@ -330,7 +348,7 @@ exports.processar = async (payload) => {
       }
       throw err;
     }
-  } else {
+    } else {
     try {
       await whatsappService.enviarMensagem(sendTo, resposta, {
         token: empresa.whatsapp_token || null,
@@ -392,19 +410,38 @@ exports.processar = async (payload) => {
     }
   }
 
-  // 🔹 6. salvar resposta
-  await Mensagem.create({
-    empresa_id,
-    contato_id: contato.id,
-    direcao: "saida",
-    conteudo: resposta,
-  });
+    stage = "mensagem_create_out";
+    // 🔹 6. salvar resposta
+    await Mensagem.create({
+      empresa_id,
+      contato_id: contato.id,
+      direcao: "saida",
+      conteudo: resposta,
+    });
 
-  // Limpamos o último motivo de não-resposta quando o bot respondeu com sucesso.
-  await Contato.setBotStatus(empresa_id, contato.id, {
-    reason: null,
-    details: null,
-  });
+    stage = "clear_bot_status";
+    // Limpamos o último motivo de não-resposta quando o bot respondeu com sucesso.
+    await Contato.setBotStatus(empresa_id, contato.id, {
+      reason: null,
+      details: null,
+    });
 
-  logger.info("Mensagem respondida", { empresaId: empresa_id });
+    logger.info("Mensagem respondida", { empresaId: empresa_id });
+  } catch (err) {
+    const contatoId = contatoForDebug?.id || null;
+    if (empresaIdForDebug && contatoId) {
+      try {
+        await Contato.setBotStatus(empresaIdForDebug, contatoId, {
+          reason: "internal_error",
+          details: {
+            stage,
+            message: err?.message || String(err),
+          },
+        });
+      } catch {
+        // best-effort: não deixar a falha de observabilidade quebrar o processamento
+      }
+    }
+    throw err;
+  }
 };
