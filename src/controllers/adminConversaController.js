@@ -215,7 +215,22 @@ exports.devolverParaBot = async (req, res, next) => {
       return res.status(404).json({ error: "Contato não encontrado" });
 
     const updated = await Contato.devolverParaBot(empresaId, contatoId);
-    res.json({ contato: updated });
+
+    // Ao devolver para o bot, limpa imediatamente o último status/motivo persistido.
+    // Isso evita exibir "humano ativo" como status antigo após o handoff.
+    let contatoFinal = updated;
+    try {
+      contatoFinal =
+        (await Contato.setBotStatus(empresaId, contatoId, {
+          reason: null,
+          details: null,
+        })) || updated;
+    } catch {
+      // best-effort
+      contatoFinal = updated;
+    }
+
+    res.json({ contato: contatoFinal });
   } catch (err) {
     next(err);
   }
@@ -264,7 +279,10 @@ exports.debugConversa = async (req, res, next) => {
       if (!suppressNow) return botStatus;
       return {
         reason: suppressNow,
-        at: suppressNow === "human_active" ? contato.ultimo_humano_em || null : null,
+        at:
+          suppressNow === "human_active"
+            ? contato.ultimo_humano_em || null
+            : null,
         details: {
           computed: true,
           source: "runtime",
@@ -282,8 +300,7 @@ exports.debugConversa = async (req, res, next) => {
     const lastInbound = recent.find((m) => m.direcao === "entrada") || null;
     const lastOutbound = recent.find((m) => m.direcao === "saida") || null;
 
-    const lastInboundAt = lastInbound?.
-    created_at
+    const lastInboundAt = lastInbound?.created_at
       ? new Date(lastInbound.created_at)
       : null;
     const lastInboundAtMs = lastInboundAt?.getTime
