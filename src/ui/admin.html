@@ -440,6 +440,7 @@
             <span class="badge" id="attBadge">—</span>
             <button id="btnAssumir">Assumir atendimento</button>
             <button id="btnDevolver">Devolver para bot</button>
+            <button id="btnDebug">Debug</button>
           </div>
         </div>
       `;
@@ -452,6 +453,7 @@
       const attBadge = head.querySelector("#attBadge");
       const btnAssumir = head.querySelector("#btnAssumir");
       const btnDevolver = head.querySelector("#btnDevolver");
+      const btnDebug = head.querySelector("#btnDebug");
 
       (function applyAtendimentoState() {
         const modo = String(payload?.contato?.atendimento_modo || "bot").toLowerCase();
@@ -492,6 +494,39 @@
           await apiPost(adminUrl(`empresas/${empresaId}/conversas/${payload.contato.id}/devolver`));
           await selectContato(payload.contato.id);
           setStatus("Devolvido para bot");
+        } catch (e) {
+          setError(e.message);
+          setStatus("");
+        }
+      });
+
+      btnDebug.addEventListener("click", async () => {
+        try {
+          setError("");
+          setStatus("Carregando debug…");
+
+          const empresaId = Number(empresaIdInput.value || 0);
+          if (!empresaId) throw new Error("Empresa ID inválido");
+          const contatoId = payload?.contato?.id;
+          if (!contatoId) throw new Error("Contato inválido");
+
+          const debugPayload = await apiGet(
+            adminUrl(`empresas/${empresaId}/conversas/${contatoId}/debug`),
+          );
+
+          const w = window.open("", "_blank");
+          if (!w) throw new Error("Pop-up bloqueado pelo navegador");
+
+          const title = `Debug • Empresa ${empresaId} • Contato ${contatoId}`;
+          const json = JSON.stringify(debugPayload, null, 2);
+
+          w.document.open();
+          w.document.write(
+            `<!doctype html><html lang="pt-br"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>${escapeHtml(title)}</title></head><body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;"><div style="padding:12px 16px;border-bottom:1px solid #ddd;"><strong>${escapeHtml(title)}</strong></div><pre style="margin:0;padding:12px 16px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(json)}</pre></body></html>`,
+          );
+          w.document.close();
+
+          setStatus("Debug aberto");
         } catch (e) {
           setError(e.message);
           setStatus("");
