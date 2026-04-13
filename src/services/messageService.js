@@ -176,31 +176,35 @@ exports.processar = async (payload) => {
   });
 
   // 🔹 2.1 handoff: se humano assumiu ou bot está pausado, não responder
-  const modo = String(contato.atendimento_modo || "bot").toLowerCase();
-  const pausadoAteMs = contato.atendimento_pausado_ate
-    ? new Date(contato.atendimento_pausado_ate).getTime()
+  // Recarrega o contato para evitar race (ex.: admin assume atendimento ao mesmo tempo que chega webhook).
+  const contatoAtual =
+    (await Contato.findById(empresa_id, contato.id)) || contato;
+
+  const modo = String(contatoAtual.atendimento_modo || "bot").toLowerCase();
+  const pausadoAteMs = contatoAtual.atendimento_pausado_ate
+    ? new Date(contatoAtual.atendimento_pausado_ate).getTime()
     : 0;
   if (modo === "humano") {
-    await Contato.setBotStatus(empresa_id, contato.id, {
+    await Contato.setBotStatus(empresa_id, contatoAtual.id, {
       reason: "human_active",
       details: { atendimento_modo: "humano" },
     });
     logger.info("Bot suprimido: atendimento humano ativo", {
       empresaId: empresa_id,
-      contatoId: contato.id,
+      contatoId: contatoAtual.id,
       botReason: "human_active",
     });
     return;
   }
   if (pausadoAteMs && pausadoAteMs > Date.now()) {
-    await Contato.setBotStatus(empresa_id, contato.id, {
+    await Contato.setBotStatus(empresa_id, contatoAtual.id, {
       reason: "paused",
-      details: { pausadoAte: contato.atendimento_pausado_ate },
+      details: { pausadoAte: contatoAtual.atendimento_pausado_ate },
     });
     logger.info("Bot suprimido: em pausa", {
       empresaId: empresa_id,
-      contatoId: contato.id,
-      pausadoAte: contato.atendimento_pausado_ate,
+      contatoId: contatoAtual.id,
+      pausadoAte: contatoAtual.atendimento_pausado_ate,
       botReason: "paused",
     });
     return;
