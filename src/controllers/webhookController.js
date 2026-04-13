@@ -37,7 +37,13 @@ exports.receberMensagem = async (req, res, next) => {
     await messageService.processar(req.body);
   } catch (err) {
     // Importante: a Meta pode reenviar eventos se não receber 2xx.
-    logger.error("Erro ao processar webhook", { message: err.message });
+    logger.error("Erro ao processar webhook", {
+      message: err?.message || String(err),
+      code: err?.code || null,
+      detail: err?.detail || null,
+      where: err?.where || null,
+      stack: err?.stack || null,
+    });
   }
 
   return res.sendStatus(200);

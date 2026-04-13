@@ -9,7 +9,7 @@ exports.listByEmpresaId = async (
      FROM mensagens
      WHERE empresa_id = $1
        AND ($2::int IS NULL OR contato_id = $2)
-       AND ($3::text IS NULL OR direcao = $3)
+       AND ($3 IS NULL OR direcao = $3)
      ORDER BY id DESC
      LIMIT $4 OFFSET $5`,
     [empresaId, contatoId, direcao, limit, offset],
