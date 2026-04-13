@@ -24,6 +24,12 @@ router.get(
   conversaController.listarMensagens,
 );
 
+router.get(
+  "/empresas/:empresaId/conversas/:contatoId/debug",
+  apiKeyAuth(),
+  conversaController.debugConversa,
+);
+
 router.post(
   "/empresas/:empresaId/conversas/:contatoId/read",
   apiKeyAuth(),

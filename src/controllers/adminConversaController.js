@@ -10,6 +10,18 @@ function toInt(value) {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
+function safeJsonParse(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  const s = String(value || "").trim();
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return { message: s };
+  }
+}
+
 exports.listarConversas = async (req, res, next) => {
   try {
     const empresaId = toInt(req.params.empresaId);
@@ -204,6 +216,121 @@ exports.devolverParaBot = async (req, res, next) => {
 
     const updated = await Contato.devolverParaBot(empresaId, contatoId);
     res.json({ contato: updated });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.debugConversa = async (req, res, next) => {
+  try {
+    const empresaId = toInt(req.params.empresaId);
+    const contatoId = toInt(req.params.contatoId);
+    if (!empresaId)
+      return res.status(400).json({ error: "empresaId inválido" });
+    if (!contatoId)
+      return res.status(400).json({ error: "contatoId inválido" });
+
+    const empresa = await Empresa.findById(empresaId);
+    if (!empresa)
+      return res.status(404).json({ error: "Empresa não encontrada" });
+
+    const contato = await Contato.findById(empresaId, contatoId);
+    if (!contato)
+      return res.status(404).json({ error: "Contato não encontrado" });
+
+    const modo = String(contato.atendimento_modo || "bot").toLowerCase();
+    const pausadoAte = contato.atendimento_pausado_ate
+      ? new Date(contato.atendimento_pausado_ate)
+      : null;
+    const pausadoAteMs = pausadoAte?.getTime ? pausadoAte.getTime() : 0;
+    const isPausado = Boolean(pausadoAteMs && pausadoAteMs > Date.now());
+    const isHumano = modo === "humano";
+
+    const botStatus = {
+      reason: contato.bot_status_reason || null,
+      at: contato.bot_status_at || null,
+      details: safeJsonParse(contato.bot_status_details || null),
+    };
+
+    const suppressNow = isHumano ? "human_active" : isPausado ? "paused" : null;
+
+    const recent = await Conversa.listMensagensByContato(empresaId, contatoId, {
+      limit: 30,
+      offset: 0,
+      order: "desc",
+    });
+
+    const lastInbound = recent.find((m) => m.direcao === "entrada") || null;
+    const lastOutbound = recent.find((m) => m.direcao === "saida") || null;
+
+    const telefoneNorm = normalizeTelefoneBR(contato.telefone);
+
+    res.json({
+      empresa: { id: empresa.id, nome: empresa.nome || null },
+      contato: {
+        id: contato.id,
+        nome: contato.nome || null,
+        telefone: contato.telefone,
+        telefone_normalizado: telefoneNorm || null,
+        tags: contato.tags || null,
+        atendimento_modo: contato.atendimento_modo,
+        atendimento_pausado_ate: contato.atendimento_pausado_ate,
+        atendimento_assumido_por: contato.atendimento_assumido_por || null,
+        ultimo_humano_em: contato.ultimo_humano_em || null,
+      },
+      runtime: {
+        isHumano,
+        isPausado,
+        suppressReasonNow: suppressNow,
+      },
+      botStatus,
+      mensagens: {
+        count: recent.length,
+        lastInbound: lastInbound
+          ? {
+              id: lastInbound.id,
+              direcao: lastInbound.direcao,
+              conteudo: lastInbound.conteudo,
+              tipo: lastInbound.tipo,
+              wa_message_id: lastInbound.wa_message_id || null,
+              lida_em: lastInbound.lida_em || null,
+              created_at: lastInbound.created_at,
+            }
+          : null,
+        lastOutbound: lastOutbound
+          ? {
+              id: lastOutbound.id,
+              direcao: lastOutbound.direcao,
+              conteudo: lastOutbound.conteudo,
+              tipo: lastOutbound.tipo,
+              wa_message_id: lastOutbound.wa_message_id || null,
+              lida_em: lastOutbound.lida_em || null,
+              created_at: lastOutbound.created_at,
+            }
+          : null,
+        sample: recent.map((m) => ({
+          id: m.id,
+          direcao: m.direcao,
+          tipo: m.tipo,
+          wa_message_id: m.wa_message_id || null,
+          lida_em: m.lida_em || null,
+          created_at: m.created_at,
+          conteudo: m.conteudo,
+        })),
+      },
+      hints: {
+        note: "Se suppressReasonNow != null, o bot não deve responder agora. botStatus guarda o último motivo persistido pelo webhook.",
+        whatsapp_configured: Boolean(
+          empresa.whatsapp_token && empresa.phone_number_id,
+        ),
+        signature_required:
+          String(process.env.REQUIRE_WHATSAPP_WEBHOOK_SIGNATURE || "").trim() ||
+          null,
+        reengage_template:
+          String(process.env.WHATSAPP_REENGAGE_TEMPLATE_NAME || "").trim() ||
+          null,
+      },
+    });
   } catch (err) {
     next(err);
   }
