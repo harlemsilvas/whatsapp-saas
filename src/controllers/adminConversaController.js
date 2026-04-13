@@ -263,6 +263,18 @@ exports.debugConversa = async (req, res, next) => {
     const lastInbound = recent.find((m) => m.direcao === "entrada") || null;
     const lastOutbound = recent.find((m) => m.direcao === "saida") || null;
 
+    const lastInboundAt = lastInbound?.created_at
+      ? new Date(lastInbound.created_at)
+      : null;
+    const lastInboundAtMs = lastInboundAt?.getTime
+      ? lastInboundAt.getTime()
+      : 0;
+    const hoursSinceLastInbound = lastInboundAtMs
+      ? (Date.now() - lastInboundAtMs) / (1000 * 60 * 60)
+      : null;
+    const likelyOutside24h =
+      typeof hoursSinceLastInbound === "number" && hoursSinceLastInbound > 24;
+
     const telefoneNorm = normalizeTelefoneBR(contato.telefone);
 
     res.json({
@@ -282,6 +294,15 @@ exports.debugConversa = async (req, res, next) => {
         isHumano,
         isPausado,
         suppressReasonNow: suppressNow,
+        window24h: {
+          lastInboundAt: lastInboundAt ? lastInboundAt.toISOString() : null,
+          hoursSinceLastInbound:
+            typeof hoursSinceLastInbound === "number"
+              ? Math.round(hoursSinceLastInbound * 100) / 100
+              : null,
+          likelyOutside24h,
+          note: "Estimativa baseada no created_at da última mensagem de entrada salva no banco.",
+        },
       },
       botStatus,
       mensagens: {
@@ -329,6 +350,12 @@ exports.debugConversa = async (req, res, next) => {
         reengage_template:
           String(process.env.WHATSAPP_REENGAGE_TEMPLATE_NAME || "").trim() ||
           null,
+        reengage_template_lang:
+          String(
+            process.env.WHATSAPP_REENGAGE_TEMPLATE_LANG ||
+              process.env.WHATSAPP_TEMPLATE_LANG ||
+              "",
+          ).trim() || null,
       },
     });
   } catch (err) {

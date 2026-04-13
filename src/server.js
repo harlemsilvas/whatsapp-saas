@@ -1,4 +1,8 @@
-require("dotenv").config();
+const path = require("path");
+const dotenv = require("dotenv");
+
+// Carrega .env a partir da raiz do projeto, mesmo se o processo for iniciado com outro cwd (ex.: PM2).
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 const app = require("./app");
 const logger = require("./utils/logger");
 const env = require("./config/env");
