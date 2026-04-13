@@ -182,9 +182,9 @@ exports.setBotStatus = async (
     const result = await db.query(
       `UPDATE contatos
        SET
-         bot_status_reason = $3,
-         bot_status_details = $4,
-         bot_status_at = CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END
+         bot_status_reason = $3::varchar(40),
+         bot_status_details = $4::text,
+         bot_status_at = CASE WHEN $3::varchar(40) IS NULL THEN NULL ELSE NOW() END
        WHERE empresa_id = $1 AND id = $2
        RETURNING *`,
       [empresaId, contatoId, reasonValue, detailsValue],
