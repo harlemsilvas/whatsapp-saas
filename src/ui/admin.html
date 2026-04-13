@@ -325,11 +325,35 @@
     }
 
     function formatBotStatus(contato) {
-      const reason = String(contato?.bot_status_reason || "").trim();
+      let reason = String(contato?.bot_status_reason || "").trim();
+
+      // Fallback: quando o status persistido ainda não existe (ou não pôde ser gravado),
+      // exibimos o motivo efetivo com base no estado atual do contato.
+      let computed = false;
+      if (!reason) {
+        const modo = String(contato?.atendimento_modo || "bot").toLowerCase();
+        const pausadoAte = contato?.atendimento_pausado_ate
+          ? new Date(contato.atendimento_pausado_ate)
+          : null;
+        const isPausado = pausadoAte && pausadoAte.getTime && pausadoAte.getTime() > Date.now();
+        if (modo === "humano") {
+          reason = "human_active";
+          computed = true;
+        } else if (isPausado) {
+          reason = "paused";
+          computed = true;
+        }
+      }
+
       if (!reason) return null;
 
-      const details = parseBotStatusDetails(contato?.bot_status_details || null);
-      const at = contato?.bot_status_at ? new Date(contato.bot_status_at) : null;
+      const details = computed
+        ? { computed: true }
+        : parseBotStatusDetails(contato?.bot_status_details || null);
+
+      const at = computed
+        ? (reason === "human_active" && contato?.ultimo_humano_em ? new Date(contato.ultimo_humano_em) : null)
+        : (contato?.bot_status_at ? new Date(contato.bot_status_at) : null);
 
       let label = "";
       if (reason === "human_active") label = "Suprimido: humano ativo";

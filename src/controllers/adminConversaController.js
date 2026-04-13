@@ -254,6 +254,25 @@ exports.debugConversa = async (req, res, next) => {
 
     const suppressNow = isHumano ? "human_active" : isPausado ? "paused" : null;
 
+    const hasBotStatusColumns =
+      Object.prototype.hasOwnProperty.call(contato, "bot_status_reason") &&
+      Object.prototype.hasOwnProperty.call(contato, "bot_status_details") &&
+      Object.prototype.hasOwnProperty.call(contato, "bot_status_at");
+
+    const botStatusEffective = (() => {
+      if (botStatus.reason) return botStatus;
+      if (!suppressNow) return botStatus;
+      return {
+        reason: suppressNow,
+        at: suppressNow === "human_active" ? contato.ultimo_humano_em || null : null,
+        details: {
+          computed: true,
+          source: "runtime",
+          note: "Fallback: motivo efetivo baseado no estado atual quando bot_status_* está vazio.",
+        },
+      };
+    })();
+
     const recent = await Conversa.listMensagensByContato(empresaId, contatoId, {
       limit: 30,
       offset: 0,
@@ -306,6 +325,7 @@ exports.debugConversa = async (req, res, next) => {
         },
       },
       botStatus,
+      botStatusEffective,
       mensagens: {
         count: recent.length,
         lastInbound: lastInbound
@@ -342,6 +362,7 @@ exports.debugConversa = async (req, res, next) => {
       },
       hints: {
         note: "Se suppressReasonNow != null, o bot não deve responder agora. botStatus guarda o último motivo persistido pelo webhook.",
+        bot_status_columns_present: hasBotStatusColumns,
         whatsapp_configured: Boolean(
           empresa.whatsapp_token && empresa.phone_number_id,
         ),
