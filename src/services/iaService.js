@@ -505,7 +505,7 @@ async function callOpenAI({
   }
 }
 
-exports.gerarResposta = async (input) => {
+exports.gerarRespostaComMeta = async (input) => {
   function buildSmartFallback(messageText) {
     const text = String(messageText || "").trim();
     if (!text) return null;
@@ -557,10 +557,33 @@ exports.gerarResposta = async (input) => {
       contato,
     });
 
-    if (result.disabled) return buildSmartFallback(mensagem) || fallbackText;
+    if (result.disabled) {
+      const reply = buildSmartFallback(mensagem) || fallbackText;
+      return {
+        reply,
+        meta: {
+          isFallback: true,
+          fallbackKind: reply === fallbackText ? "generic" : "smart",
+          usedGenericFallback: reply === fallbackText,
+          disabled: true,
+        },
+      };
+    }
 
     const reply = result.reply ? String(result.reply).trim() : "";
-    if (!reply) return buildSmartFallback(mensagem) || fallbackText;
+    if (!reply) {
+      const reply2 = buildSmartFallback(mensagem) || fallbackText;
+      return {
+        reply: reply2,
+        meta: {
+          isFallback: true,
+          fallbackKind: reply2 === fallbackText ? "generic" : "smart",
+          usedGenericFallback: reply2 === fallbackText,
+          disabled: false,
+          reason: "empty_reply",
+        },
+      };
+    }
 
     if (result.usage) {
       logger.info("OpenAI usage", {
@@ -570,9 +593,32 @@ exports.gerarResposta = async (input) => {
       });
     }
 
-    return reply;
+    return {
+      reply,
+      meta: {
+        isFallback: false,
+        usedGenericFallback: false,
+        disabled: false,
+      },
+    };
   } catch (err) {
     logger.error("Erro inesperado no iaService", { message: err.message });
-    return buildSmartFallback(mensagem) || fallbackText;
+    const reply = buildSmartFallback(mensagem) || fallbackText;
+    return {
+      reply,
+      meta: {
+        isFallback: true,
+        fallbackKind: reply === fallbackText ? "generic" : "smart",
+        usedGenericFallback: reply === fallbackText,
+        disabled: false,
+        reason: "exception",
+      },
+    };
   }
+};
+
+// Mantém compatibilidade: quem usa gerarResposta() continua recebendo string
+exports.gerarResposta = async (input) => {
+  const r = await exports.gerarRespostaComMeta(input);
+  return r?.reply || null;
 };

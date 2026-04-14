@@ -16,6 +16,156 @@ function maskPhone(value) {
   return `***${last4}`;
 }
 
+function normalizePhoneDigits(value) {
+  const digits = String(value || "").replace(/\D+/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("55")) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+async function notifyHumanAttendant({
+  empresa,
+  useEnvWhatsApp,
+  empresaId,
+  contato,
+  inboundText,
+}) {
+  const toRaw = String(process.env.HUMAN_ALERT_WHATSAPP_TO || "").trim();
+  if (!toRaw) {
+    logger.info(
+      "Alerta para atendente desativado (HUMAN_ALERT_WHATSAPP_TO vazio)",
+      {
+        empresaId,
+        contatoId: contato?.id || null,
+        hint: "Se você acabou de editar o .env, reinicie o processo (ex.: pm2 restart).",
+      },
+    );
+    return;
+  }
+
+  const to = normalizePhoneDigits(toRaw);
+  if (!to) return;
+
+  // Evita enviar alerta para o próprio cliente por engano
+  const contatoTelefone = normalizePhoneDigits(contato?.telefone);
+  if (contatoTelefone && to === contatoTelefone) {
+    logger.warn(
+      "HUMAN_ALERT_WHATSAPP_TO aponta para o telefone do contato; ignorando alerta",
+      {
+        empresaId,
+        contatoId: contato?.id || null,
+      },
+    );
+    return;
+  }
+
+  const preview = String(inboundText || "")
+    .trim()
+    .slice(0, 220);
+  const msgText =
+    `ALERTA: IA não conseguiu responder automaticamente.\n` +
+    `Empresa ${empresaId} • Contato #${contato?.id || "?"}\n` +
+    (contato?.nome ? `Nome: ${String(contato.nome).trim()}\n` : "") +
+    (contato?.telefone
+      ? `Telefone: ${String(contato.telefone).trim()}\n`
+      : "") +
+    (preview ? `Última mensagem: ${preview}` : "");
+
+  logger.info("Disparando alerta para atendente", {
+    empresaId,
+    contatoId: contato?.id || null,
+    to: maskPhone(to),
+    useEnvWhatsApp: Boolean(useEnvWhatsApp),
+  });
+
+  const templateName = String(
+    process.env.HUMAN_ALERT_TEMPLATE_NAME || "",
+  ).trim();
+  const templateLang = String(
+    process.env.HUMAN_ALERT_TEMPLATE_LANG ||
+      process.env.WHATSAPP_TEMPLATE_LANG ||
+      "pt_BR",
+  ).trim();
+
+  const attemptTemplateFallback = async (outsideWindowGraph) => {
+    if (!templateName) {
+      logger.warn("Alerta fora da janela 24h e template não configurado", {
+        empresaId,
+        contatoId: contato?.id || null,
+        to: maskPhone(to),
+        hint: "Defina HUMAN_ALERT_TEMPLATE_NAME (template aprovado na Meta) ou peça para o atendente mandar uma mensagem para abrir a janela 24h.",
+        graph: outsideWindowGraph || null,
+      });
+      return;
+    }
+
+    const options = {
+      languageCode: templateLang,
+    };
+
+    if (!useEnvWhatsApp) {
+      options.token = empresa?.whatsapp_token || null;
+      options.phoneId = empresa?.phone_number_id || null;
+    }
+
+    await whatsappService.enviarTemplateMensagem(to, templateName, options);
+    logger.info("Template de alerta enviado para atendente", {
+      empresaId,
+      contatoId: contato?.id || null,
+      to: maskPhone(to),
+      templateName,
+      languageCode: templateLang,
+    });
+  };
+
+  try {
+    if (useEnvWhatsApp) {
+      await whatsappService.enviarMensagem(to, msgText);
+      logger.info("Alerta enviado para atendente (env WhatsApp)", {
+        empresaId,
+        contatoId: contato?.id || null,
+        to: maskPhone(to),
+      });
+      return;
+    }
+
+    await whatsappService.enviarMensagem(to, msgText, {
+      token: empresa?.whatsapp_token || null,
+      phoneId: empresa?.phone_number_id || null,
+    });
+    logger.info("Alerta enviado para atendente", {
+      empresaId,
+      contatoId: contato?.id || null,
+      to: maskPhone(to),
+    });
+  } catch (err) {
+    if (err && err.whatsappReason === "outside_24h_window") {
+      try {
+        await attemptTemplateFallback(err.whatsappGraph || null);
+        return;
+      } catch (templateErr) {
+        logger.warn("Falha ao enviar template de alerta para atendente", {
+          empresaId,
+          contatoId: contato?.id || null,
+          to: maskPhone(to),
+          message: templateErr?.message || String(templateErr),
+          code: templateErr?.code || null,
+        });
+      }
+    }
+
+    logger.warn("Falha ao enviar alerta para atendente", {
+      empresaId,
+      contatoId: contato?.id || null,
+      to: maskPhone(to),
+      message: err?.message || String(err),
+      code: err?.code || null,
+      whatsappReason: err?.whatsappReason || null,
+    });
+  }
+}
+
 async function setBotStatusSafe(empresaId, contatoId, payload, ctx = {}) {
   try {
     await Contato.setBotStatus(empresaId, contatoId, payload);
@@ -291,11 +441,40 @@ exports.processar = async (payload) => {
           .filter((m) => m.content);
       }
 
-      resposta = await iaService.gerarResposta({
+      const ia = await iaService.gerarRespostaComMeta({
         mensagem,
         contextoMensagens,
         contato,
       });
+      resposta = ia?.reply;
+
+      if (ia?.meta?.isFallback) {
+        logger.warn("IA respondeu com fallback", {
+          empresaId: empresa_id,
+          contatoId: contato?.id || null,
+          usedGenericFallback: Boolean(ia?.meta?.usedGenericFallback),
+          reason: ia?.meta?.reason || null,
+          fallbackKind: ia?.meta?.fallbackKind || null,
+        });
+      }
+
+      // Se a IA caiu no fallback genérico ("No momento não consegui..."), notifica o atendente.
+      if (ia?.meta?.usedGenericFallback) {
+        logger.warn("Fallback genérico detectado; tentando alertar atendente", {
+          empresaId: empresa_id,
+          contatoId: contato?.id || null,
+          envConfigured: Boolean(
+            String(process.env.HUMAN_ALERT_WHATSAPP_TO || "").trim(),
+          ),
+        });
+        await notifyHumanAttendant({
+          empresa,
+          useEnvWhatsApp,
+          empresaId: empresa_id,
+          contato,
+          inboundText: mensagem,
+        });
+      }
     }
 
     stage = "whatsapp_send";

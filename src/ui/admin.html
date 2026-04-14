@@ -209,6 +209,14 @@
     let currentContatoId = null;
     let currentContato = null;
 
+    // Auto-refresh (polling) da conversa selecionada
+    const POLL_MESSAGES_MS = 2500;
+    const POLL_CONVERSAS_MS = 8000;
+    let pollTimer = null;
+    let pollInFlight = false;
+    let lastRenderedLastMessageId = null;
+    let lastConversasRefreshAt = 0;
+
     function setError(msg) {
       errEl.textContent = msg || "";
     }
@@ -611,6 +619,65 @@
       setStatus(`Conversas: ${data.length}`);
     }
 
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(() => {
+        refreshCurrent({ silent: true }).catch(() => {
+          // best-effort
+        });
+      }, POLL_MESSAGES_MS);
+    }
+
+    function stopPolling() {
+      if (!pollTimer) return;
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+
+    async function refreshCurrent({ silent = false } = {}) {
+      if (!currentContatoId) return;
+      if (document.hidden) return;
+      if (pollInFlight) return;
+
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) return;
+
+      pollInFlight = true;
+      try {
+        const payload = await apiGet(
+          adminUrl(
+            `empresas/${empresaId}/conversas/${currentContatoId}/mensagens?order=asc&limit=200`,
+          ),
+        );
+
+        const msgs = Array.isArray(payload?.mensagens) ? payload.mensagens : [];
+        const lastId = msgs.length ? String(msgs[msgs.length - 1]?.id || "") : "";
+
+        // Só re-renderiza se chegou/alterou alguma mensagem (evita piscar e scroll reset desnecessário)
+        if (lastId !== String(lastRenderedLastMessageId || "")) {
+          lastRenderedLastMessageId = lastId || null;
+          renderChat(payload);
+        }
+
+        const now = Date.now();
+        if (!lastConversasRefreshAt || now - lastConversasRefreshAt > POLL_CONVERSAS_MS) {
+          lastConversasRefreshAt = now;
+          const conversas = await apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`));
+          renderConversas(conversas);
+        }
+
+        if (!silent) setStatus("OK");
+      } catch (e) {
+        // Se a chave expirar/ficar inválida, vale mostrar erro (mas sem spam durante polling)
+        if (!silent) {
+          setError(e.message);
+          setStatus("");
+        }
+      } finally {
+        pollInFlight = false;
+      }
+    }
+
     async function selectContato(contatoId) {
       currentContatoId = contatoId;
       currentContato = null;
@@ -618,15 +685,25 @@
       btnRead.disabled = false;
       textEl.disabled = false;
 
+      // reseta marcador para forçar render na primeira carga
+      lastRenderedLastMessageId = null;
+
       setError("");
       setStatus("Carregando mensagens…");
 
       const empresaId = Number(empresaIdInput.value || 0);
-      const payload = await apiGet(adminUrl(`empresas/${empresaId}/conversas/${contatoId}/mensagens?order=asc&limit=200`));
+      const [payload, conversas] = await Promise.all([
+        apiGet(adminUrl(`empresas/${empresaId}/conversas/${contatoId}/mensagens?order=asc&limit=200`)),
+        apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`)),
+      ]);
+      const msgs = Array.isArray(payload?.mensagens) ? payload.mensagens : [];
+      lastRenderedLastMessageId = msgs.length ? String(msgs[msgs.length - 1]?.id || "") : null;
       renderChat(payload);
-      renderConversas(await apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`)));
+      renderConversas(conversas);
 
       setStatus("OK");
+
+      startPolling();
     }
 
     async function send() {
@@ -735,6 +812,15 @@
         history.replaceState(null, "", url.toString());
       }
     })();
+
+    // Atualiza assim que o usuário volta pra aba
+    window.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        refreshCurrent({ silent: true }).catch(() => {
+          // best-effort
+        });
+      }
+    });
 
     // Máscara simples para o input de telefone (somente visual)
     newTelefoneEl.addEventListener("blur", () => {
