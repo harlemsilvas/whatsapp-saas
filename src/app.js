@@ -3,10 +3,11 @@ const cors = require("cors");
 const routes = require("./routes");
 const publicRoutes = require("./routes/publicRoutes");
 const errorHandler = require("./middlewares/errorHandler");
+const { buildCorsOptions } = require("./config/cors");
 
 const app = express();
 
-app.use(cors());
+app.use(cors(buildCorsOptions()));
 app.use(
   express.json({
     verify: (req, _res, buf) => {

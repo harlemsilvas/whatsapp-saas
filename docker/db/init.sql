@@ -65,22 +65,61 @@ CREATE TABLE ia_logs (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =========================
--- USUÁRIO DA APLICAÇÃO
--- =========================
+-- Event store minimo para ingressar webhooks com durabilidade
+CREATE TABLE webhook_events (
+  id BIGSERIAL PRIMARY KEY,
+  event_key VARCHAR(255) NOT NULL UNIQUE,
+  empresa_id INT REFERENCES empresas(id) ON DELETE SET NULL,
+  event_kind VARCHAR(20) NOT NULL,
+  message_id VARCHAR(128) NULL,
+  status_id VARCHAR(128) NULL,
+  phone_number_id VARCHAR(100) NULL,
+  payload_hash VARCHAR(64) NULL,
+  payload_json JSONB NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'received',
+  attempt_count INT NOT NULL DEFAULT 0,
+  next_retry_at TIMESTAMP NULL,
+  lease_token VARCHAR(64) NULL,
+  lease_expires_at TIMESTAMP NULL,
+  last_error TEXT NULL,
+  processed_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-CREATE USER app_user WITH PASSWORD 'app123';
+CREATE INDEX IF NOT EXISTS ix_webhook_events_status_created_at
+  ON webhook_events (status, created_at);
 
-GRANT ALL PRIVILEGES ON DATABASE whatsapp_saas TO app_user;
-GRANT USAGE ON SCHEMA public TO app_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_user;
+CREATE INDEX IF NOT EXISTS ix_webhook_events_empresa_created_at
+  ON webhook_events (empresa_id, created_at DESC);
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-GRANT ALL ON TABLES TO app_user;
+CREATE TABLE outbox_messages (
+  id BIGSERIAL PRIMARY KEY,
+  dedup_key VARCHAR(255) NOT NULL UNIQUE,
+  empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  contato_id INT NULL REFERENCES contatos(id) ON DELETE SET NULL,
+  mensagem_id INT NULL REFERENCES mensagens(id) ON DELETE SET NULL,
+  webhook_event_id BIGINT NULL REFERENCES webhook_events(id) ON DELETE SET NULL,
+  channel VARCHAR(30) NOT NULL DEFAULT 'whatsapp',
+  message_type VARCHAR(30) NOT NULL DEFAULT 'text',
+  recipient VARCHAR(40) NOT NULL,
+  content TEXT NOT NULL,
+  payload_json JSONB NOT NULL,
+  provider_message_id VARCHAR(128) NULL,
+  provider_status VARCHAR(30) NULL,
+  provider_status_payload JSONB NULL,
+  provider_status_at TIMESTAMP NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  attempt_count INT NOT NULL DEFAULT 0,
+  next_retry_at TIMESTAMP NULL,
+  lease_token VARCHAR(64) NULL,
+  lease_expires_at TIMESTAMP NULL,
+  last_error TEXT NULL,
+  processed_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-GRANT ALL ON SEQUENCES TO app_user;
+CREATE INDEX IF NOT EXISTS ix_outbox_messages_status_created_at
+  ON outbox_messages (status, created_at);
 
 -- =========================
 -- DADOS INICIAIS

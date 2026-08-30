@@ -1,8 +1,11 @@
 const Conversa = require("../models/Conversa");
 const Contato = require("../models/Contato");
 const Empresa = require("../models/Empresa");
-const Mensagem = require("../models/Mensagem");
-const whatsappService = require("../services/whatsappService");
+const OutboxMessage = require("../models/OutboxMessage");
+const {
+  enqueueOutgoingTextMessage,
+} = require("../services/outgoingMessageService");
+const { retryOutboxMessageById } = require("../services/outboxService");
 const { normalizeTelefoneBR, isTelefoneE164Like } = require("../utils/phone");
 
 function toInt(value) {
@@ -36,6 +39,92 @@ exports.listarConversas = async (req, res, next) => {
       offset,
     });
     res.json(conversas);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listarOutbox = async (req, res, next) => {
+  try {
+    const empresaId = toInt(req.params.empresaId);
+    if (!empresaId)
+      return res.status(400).json({ error: "empresaId inválido" });
+
+    const contatoId = toInt(req.query?.contatoId);
+    const limit = toInt(req.query?.limit) ?? 50;
+    const offset = toInt(req.query?.offset) ?? 0;
+    const status = req.query?.status ? String(req.query.status).trim() : null;
+
+    const empresa = await Empresa.findById(empresaId);
+    if (!empresa)
+      return res.status(404).json({ error: "Empresa não encontrada" });
+
+    const summary = await OutboxMessage.summaryByEmpresaId(empresaId);
+    const items = await OutboxMessage.listByEmpresaId(empresaId, {
+      contatoId,
+      status,
+      limit,
+      offset,
+    });
+
+    res.json({
+      empresa: { id: empresa.id, nome: empresa.nome || null },
+      summary,
+      items,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.retryOutbox = async (req, res, next) => {
+  try {
+    const empresaId = toInt(req.params.empresaId);
+    const outboxId = toInt(req.params.outboxId);
+    if (!empresaId)
+      return res.status(400).json({ error: "empresaId inválido" });
+    if (!outboxId)
+      return res.status(400).json({ error: "outboxId inválido" });
+
+    const empresa = await Empresa.findById(empresaId);
+    if (!empresa)
+      return res.status(404).json({ error: "Empresa não encontrada" });
+
+    const record = await OutboxMessage.findById(outboxId);
+    if (!record)
+      return res.status(404).json({ error: "Item de outbox não encontrado" });
+    if (Number(record.empresa_id) !== empresaId) {
+      return res.status(404).json({ error: "Item de outbox não encontrado" });
+    }
+
+    const result = await retryOutboxMessageById(outboxId, {
+      leaseSeconds: Math.max(
+        5,
+        Math.trunc(Number(process.env.OUTBOX_WORKER_LEASE_SECONDS || 60) || 60),
+      ),
+    });
+
+    if (result?.notRetryable) {
+      return res.status(409).json({
+        error: "Item de outbox não pode ser reenviado agora",
+        reason: result.reason || "not_retryable",
+      });
+    }
+
+    if (result?.notFound) {
+      return res.status(404).json({ error: "Item de outbox não encontrado" });
+    }
+
+    const updated = await OutboxMessage.findById(outboxId);
+    return res.json({
+      ok: true,
+      result: {
+        sent: Boolean(result?.sent),
+        failed: Boolean(result?.failed),
+        usedTemplate: Boolean(result?.usedTemplate),
+      },
+      item: updated || record,
+    });
   } catch (err) {
     next(err);
   }
@@ -126,26 +215,18 @@ exports.enviarManual = async (req, res, next) => {
       });
     }
 
-    const whatsapp = await whatsappService.enviarMensagem(
-      (() => {
-        const to = normalizeTelefoneBR(contato.telefone);
-        if (!to || !isTelefoneE164Like(to)) {
-          throw new Error("Telefone do contato inválido");
-        }
-        return to;
-      })(),
-      messageText,
-      {
-        token: empresa.whatsapp_token,
-        phoneId: empresa.phone_number_id,
-      },
-    );
+    const to = normalizeTelefoneBR(contato.telefone);
+    if (!to || !isTelefoneE164Like(to)) {
+      return res.status(400).json({ error: "Telefone do contato inválido" });
+    }
 
-    const mensagem = await Mensagem.create(empresaId, {
-      contato_id: contatoId,
-      direcao: "saida",
-      conteudo: messageText,
-      tipo: "text",
+    const queued = await enqueueOutgoingTextMessage({
+      empresa,
+      empresaId,
+      contato,
+      responseText: messageText,
+      originalNumber: to,
+      useEnvWhatsApp: false,
     });
 
     // Ao enviar manualmente, assume atendimento humano e pausa o bot por um tempo.
@@ -163,9 +244,9 @@ exports.enviarManual = async (req, res, next) => {
     );
 
     res.status(201).json({
-      mensagem,
+      mensagem: queued?.mensagemSaida || null,
+      outbox: queued?.outbox || null,
       contato: contatoAtualizado || contato,
-      whatsappMessageId: whatsapp?.messages?.[0]?.id || null,
     });
   } catch (err) {
     next(err);
@@ -296,6 +377,11 @@ exports.debugConversa = async (req, res, next) => {
       offset: 0,
       order: "desc",
     });
+    const outboxRecent = await OutboxMessage.listByEmpresaId(empresaId, {
+      contatoId,
+      limit: 10,
+      offset: 0,
+    });
 
     const lastInbound = recent.find((m) => m.direcao === "entrada") || null;
     const lastOutbound = recent.find((m) => m.direcao === "saida") || null;
@@ -375,6 +461,22 @@ exports.debugConversa = async (req, res, next) => {
           lida_em: m.lida_em || null,
           created_at: m.created_at,
           conteudo: m.conteudo,
+        })),
+      },
+      outbox: {
+        count: outboxRecent.length,
+        sample: outboxRecent.map((o) => ({
+          id: o.id,
+          status: o.status,
+          recipient: o.recipient,
+          message_type: o.message_type,
+          provider_message_id: o.provider_message_id || null,
+          provider_status: o.provider_status || null,
+          attempt_count: o.attempt_count,
+          next_retry_at: o.next_retry_at || null,
+          processed_at: o.processed_at || null,
+          created_at: o.created_at,
+          last_error: o.last_error || null,
         })),
       },
       hints: {

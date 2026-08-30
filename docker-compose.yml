@@ -1,18 +1,29 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:15
     container_name: whatsapp_saas_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: whatsapp_saas
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS:-change-this-postgres-password}
+      POSTGRES_DB: ${POSTGRES_DB:-whatsapp_saas}
+      APP_DB_USER: ${APP_DB_USER:-app_user}
+      APP_DB_PASS: ${APP_DB_PASS:-change-this-app-password}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d ${POSTGRES_DB:-whatsapp_saas}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/db/init-app-user.sh:/docker-entrypoint-initdb.d/init-app-user.sh
       - pgdata:/var/lib/postgresql/data
 
 volumes:

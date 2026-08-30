@@ -19,6 +19,18 @@ router.get(
 );
 
 router.get(
+  "/empresas/:empresaId/outbox",
+  apiKeyAuth(),
+  conversaController.listarOutbox,
+);
+
+router.post(
+  "/empresas/:empresaId/outbox/:outboxId/retry",
+  apiKeyAuth(),
+  conversaController.retryOutbox,
+);
+
+router.get(
   "/empresas/:empresaId/conversas/:contatoId/mensagens",
   apiKeyAuth(),
   conversaController.listarMensagens,

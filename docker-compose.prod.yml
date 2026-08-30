@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: whatsapp_saas_db_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:?set POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS:?set POSTGRES_SUPERPASS}
+      POSTGRES_DB: ${POSTGRES_DB:-whatsapp_saas}
+      APP_DB_USER: ${APP_DB_USER:?set APP_DB_USER}
+      APP_DB_PASS: ${APP_DB_PASS:?set APP_DB_PASS}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_SUPERUSER:?set POSTGRES_SUPERUSER} -d ${POSTGRES_DB:-whatsapp_saas}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./docker/db/init-app-user.sh:/docker-entrypoint-initdb.d/init-app-user.sh:ro
+      - pgdata_prod:/var/lib/postgresql/data
+
+volumes:
+  pgdata_prod:

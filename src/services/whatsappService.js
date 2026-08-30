@@ -8,20 +8,6 @@ function maskPhone(value) {
   return `***${last4}`;
 }
 
-function maskToken(token) {
-  if (!token) return "<missing>";
-  const trimmed = String(token).trim();
-  if (trimmed.length <= 12) return "<set:" + trimmed.length + ">";
-  return (
-    trimmed.slice(0, 6) +
-    "..." +
-    trimmed.slice(-4) +
-    " (len=" +
-    trimmed.length +
-    ")"
-  );
-}
-
 function requiredEnv(name) {
   const value = process.env[name];
   if (!value || !String(value).trim()) {
@@ -140,8 +126,7 @@ exports.enviarMensagem = async (to, text, options = {}) => {
     logger.error("Erro ao enviar mensagem", {
       status,
       url,
-      to,
-      token: maskToken(token),
+      to: maskPhone(to),
       phoneId,
       graph: graphError
         ? {
@@ -219,8 +204,7 @@ exports.enviarTemplateMensagem = async (to, templateName, options = {}) => {
     logger.error("Erro ao enviar template", {
       status,
       url,
-      to,
-      token: maskToken(token),
+      to: maskPhone(to),
       phoneId,
       template: templateName,
       graph: graphError

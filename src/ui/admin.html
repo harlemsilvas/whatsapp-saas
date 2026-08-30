@@ -133,6 +133,37 @@
       color: #b00020;
       font-size: 12px;
     }
+
+    .panel {
+      border: 1px solid #e5e5e5;
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 12px;
+      background: #fcfcfc;
+    }
+
+    .panel h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .outbox-item {
+      border-top: 1px solid #eee;
+      padding: 8px 0;
+    }
+
+    .outbox-item:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .outbox-meta {
+      margin-top: 6px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
   </style>
 </head>
 
@@ -215,6 +246,7 @@
     let pollTimer = null;
     let pollInFlight = false;
     let lastRenderedLastMessageId = null;
+    let lastRenderedStateKey = null;
     let lastConversasRefreshAt = 0;
 
     function setError(msg) {
@@ -432,7 +464,83 @@
       }
     }
 
-    function renderChat(payload) {
+    function formatOutboxStatus(item) {
+      const status = String(item?.status || "").trim() || "unknown";
+      const providerStatus = String(item?.provider_status || "").trim();
+      if (providerStatus) return `${status} • Meta: ${providerStatus}`;
+      return status;
+    }
+
+    function canRetryOutbox(item) {
+      return item && item.status !== "sent";
+    }
+
+    function renderOutboxPanel(items, empresaId, contatoId) {
+      const panel = document.createElement("div");
+      panel.className = "panel";
+
+      const title = document.createElement("h3");
+      title.textContent = "Outbox recente";
+      panel.appendChild(title);
+
+      if (!Array.isArray(items) || items.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "Nenhum item recente na fila para este contato.";
+        panel.appendChild(empty);
+        return panel;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("div");
+        row.className = "outbox-item";
+
+        const when = item.created_at ? new Date(item.created_at).toLocaleString() : "";
+        const nextRetryAt = item.next_retry_at ? new Date(item.next_retry_at).toLocaleString() : "";
+        const providerId = item.provider_message_id ? ` • provider ${item.provider_message_id}` : "";
+        const errorLine = item.last_error ? `Erro: ${item.last_error}` : "";
+
+        row.innerHTML = `
+          <div><strong>${escapeHtml(item.content || "(sem conteúdo)")}</strong></div>
+          <div class="muted">${escapeHtml(formatOutboxStatus(item))} • tentativa ${Number(item.attempt_count || 0)}${providerId ? escapeHtml(providerId) : ""}</div>
+          <div class="muted">${when ? `Criado em ${escapeHtml(when)}` : ""}${nextRetryAt ? ` • retry em ${escapeHtml(nextRetryAt)}` : ""}</div>
+          ${errorLine ? `<div class="error" style="margin-top:6px">${escapeHtml(errorLine)}</div>` : ""}
+        `;
+
+        const meta = document.createElement("div");
+        meta.className = "outbox-meta";
+
+        if (canRetryOutbox(item)) {
+          const btnRetry = document.createElement("button");
+          btnRetry.textContent = "Reenviar agora";
+          btnRetry.addEventListener("click", async () => {
+            btnRetry.disabled = true;
+            try {
+              setError("");
+              setStatus("Reenviando item da outbox…");
+              await apiPost(
+                adminUrl(`empresas/${empresaId}/outbox/${item.id}/retry`),
+              );
+              await selectContato(contatoId);
+              setStatus("Item reenviado");
+            } catch (e) {
+              setError(e.message);
+              setStatus("");
+            } finally {
+              btnRetry.disabled = false;
+            }
+          });
+          meta.appendChild(btnRetry);
+        }
+
+        row.appendChild(meta);
+        panel.appendChild(row);
+      }
+
+      return panel;
+    }
+
+    function renderChat(payload, outboxItems = []) {
       chatEl.innerHTML = "";
 
       currentContato = payload.contato;
@@ -478,6 +586,13 @@
       `;
 
       chatEl.appendChild(head);
+      chatEl.appendChild(
+        renderOutboxPanel(
+          outboxItems,
+          Number(empresaIdInput.value || 0),
+          payload.contato.id,
+        ),
+      );
 
       const btnSaveContato = head.querySelector("#btnSaveContato");
       const editNome = head.querySelector("#editNome");
@@ -644,19 +759,44 @@
 
       pollInFlight = true;
       try {
-        const payload = await apiGet(
-          adminUrl(
-            `empresas/${empresaId}/conversas/${currentContatoId}/mensagens?order=asc&limit=200`,
+        const [payload, outboxPayload] = await Promise.all([
+          apiGet(
+            adminUrl(
+              `empresas/${empresaId}/conversas/${currentContatoId}/mensagens?order=asc&limit=200`,
+            ),
           ),
-        );
+          apiGet(
+            adminUrl(`empresas/${empresaId}/outbox?contatoId=${currentContatoId}&limit=10`),
+          ),
+        ]);
 
         const msgs = Array.isArray(payload?.mensagens) ? payload.mensagens : [];
+        const outboxItems = Array.isArray(outboxPayload?.items)
+          ? outboxPayload.items
+          : [];
         const lastId = msgs.length ? String(msgs[msgs.length - 1]?.id || "") : "";
+        const renderStateKey = JSON.stringify({
+          lastMessageId: lastId || null,
+          contato: {
+            modo: payload?.contato?.atendimento_modo || null,
+            pausado: payload?.contato?.atendimento_pausado_ate || null,
+            botReason: payload?.contato?.bot_status_reason || null,
+            botAt: payload?.contato?.bot_status_at || null,
+          },
+          outbox: outboxItems.map((item) => [
+            item.id,
+            item.status,
+            item.provider_status || null,
+            item.attempt_count || 0,
+            item.next_retry_at || null,
+          ]),
+        });
 
-        // Só re-renderiza se chegou/alterou alguma mensagem (evita piscar e scroll reset desnecessário)
-        if (lastId !== String(lastRenderedLastMessageId || "")) {
+        // Re-renderiza quando muda mensagem, estado do contato ou estado da outbox.
+        if (renderStateKey !== String(lastRenderedStateKey || "")) {
           lastRenderedLastMessageId = lastId || null;
-          renderChat(payload);
+          lastRenderedStateKey = renderStateKey;
+          renderChat(payload, outboxItems);
         }
 
         const now = Date.now();
@@ -692,13 +832,31 @@
       setStatus("Carregando mensagens…");
 
       const empresaId = Number(empresaIdInput.value || 0);
-      const [payload, conversas] = await Promise.all([
+      const [payload, conversas, outboxPayload] = await Promise.all([
         apiGet(adminUrl(`empresas/${empresaId}/conversas/${contatoId}/mensagens?order=asc&limit=200`)),
         apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`)),
+        apiGet(adminUrl(`empresas/${empresaId}/outbox?contatoId=${contatoId}&limit=10`)),
       ]);
       const msgs = Array.isArray(payload?.mensagens) ? payload.mensagens : [];
+      const outboxItems = Array.isArray(outboxPayload?.items) ? outboxPayload.items : [];
       lastRenderedLastMessageId = msgs.length ? String(msgs[msgs.length - 1]?.id || "") : null;
-      renderChat(payload);
+      lastRenderedStateKey = JSON.stringify({
+        lastMessageId: lastRenderedLastMessageId,
+        contato: {
+          modo: payload?.contato?.atendimento_modo || null,
+          pausado: payload?.contato?.atendimento_pausado_ate || null,
+          botReason: payload?.contato?.bot_status_reason || null,
+          botAt: payload?.contato?.bot_status_at || null,
+        },
+        outbox: outboxItems.map((item) => [
+          item.id,
+          item.status,
+          item.provider_status || null,
+          item.attempt_count || 0,
+          item.next_retry_at || null,
+        ]),
+      });
+      renderChat(payload, outboxItems);
       renderConversas(conversas);
 
       setStatus("OK");

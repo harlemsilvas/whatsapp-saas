@@ -32,6 +32,10 @@ function validate() {
   const requireDb = toBool(process.env.REQUIRE_DB_ENV, isProd);
   const requireWhatsApp = toBool(process.env.REQUIRE_WHATSAPP_ENV, isProd);
   const requireVerifyToken = toBool(process.env.REQUIRE_VERIFY_TOKEN, isProd);
+  const requireAdminApiKey = toBool(
+    process.env.REQUIRE_ADMIN_API_KEY,
+    isProd,
+  );
   const requireWhatsAppWebhookSignature = toBool(
     process.env.REQUIRE_WHATSAPP_WEBHOOK_SIGNATURE,
     isProd,
@@ -52,6 +56,10 @@ function validate() {
 
   if (requireVerifyToken) {
     required("VERIFY_TOKEN");
+  }
+
+  if (requireAdminApiKey) {
+    required("ADMIN_API_KEY");
   }
 
   if (requireWhatsAppWebhookSignature) {

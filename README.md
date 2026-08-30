@@ -24,6 +24,45 @@ Healthcheck:
 curl -sS http://localhost:3000/
 ```
 
+## Banco com Docker
+
+Desenvolvimento local:
+
+```bash
+docker compose up -d postgres
+```
+
+O `docker-compose.yml` agora:
+
+- usa variáveis de ambiente para credenciais
+- publica o PostgreSQL apenas em `127.0.0.1`
+- adiciona `healthcheck`
+- cria o usuário da aplicação por script de init, sem senha fixa no SQL versionado
+
+Produção:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d postgres
+```
+
+Antes de subir em produção, preencha no `.env`:
+
+- `POSTGRES_SUPERUSER`
+- `POSTGRES_SUPERPASS`
+- `POSTGRES_DB`
+- `APP_DB_USER`
+- `APP_DB_PASS`
+
+Observação: o arquivo de produção mantém o banco preso em `localhost`, para uso atrás de proxy/rede privada na VPS.
+
+## CI
+
+O workflow em [deploy.yml](/home/harlem/projetos/whatsapp-saas/.github/workflows/deploy.yml:1) agora:
+
+- roda testes em `push` e `pull_request` para `main`
+- só executa deploy se o job de testes passar
+- faz deploy apenas em eventos de `push` na branch `main`
+
 ## Itens obrigatórios na Meta (Políticas/Termos/Exclusão)
 
 Ao configurar o App no painel da Meta, normalmente são exigidas as URLs abaixo. Este projeto já expõe páginas públicas para isso.
@@ -159,7 +198,7 @@ No terminal do ngrok, pare com `Ctrl+C`.
 
 ## Admin (Empresas + Onboarding)
 
-Se `ADMIN_API_KEY` estiver definido no `.env`, os endpoints abaixo exigem header `x-api-key`.
+Em produção, `ADMIN_API_KEY` é obrigatória por padrão. Os endpoints abaixo exigem header `x-api-key`.
 
 ### Atualizar credenciais do WhatsApp por empresa (recomendado)
 
@@ -203,6 +242,73 @@ Em bancos já existentes, rode:
 ```bash
 npm run db:migrate:unread
 ```
+
+### Migração (event store do webhook)
+
+Para habilitar o registro durável dos eventos recebidos antes do processamento, aplique:
+
+```bash
+npm run db:migrate:webhook-events
+```
+
+Isso cria a tabela `webhook_events`, usada para marcar eventos como `received`, `processed` e `failed`.
+
+Observação: os scripts de migração tentam usar `POSTGRES_SUPERUSER` e `POSTGRES_SUPERPASS` do `.env` quando disponíveis. Isso evita depender do `app_user` para criar ou alterar schema.
+
+Para habilitar lease e retry básico nessa tabela, aplique também:
+
+```bash
+npm run db:migrate:webhook-events:retry-lease
+```
+
+### Migração (outbox de saída)
+
+Para persistir mensagens de saída antes do envio à Graph API, aplique:
+
+```bash
+npm run db:migrate:outbox
+```
+
+Isso cria a tabela `outbox_messages`, usada para desacoplar o processamento do webhook do envio ao WhatsApp.
+
+### Reprocessar eventos com falha
+
+Quando houver registros `failed` em `webhook_events`, você pode tentar replay manual:
+
+```bash
+npm run webhook:reprocess
+```
+
+Opções:
+
+```bash
+npm run webhook:reprocess -- --limit=50
+npm run webhook:reprocess -- --statuses=failed,received
+```
+
+Observação: o replay agora só claim eventos retryable quando o lease estiver livre ou expirado.
+
+### Rodar o webhook worker
+
+Para processar continuamente `webhook_events` fora da requisição HTTP:
+
+```bash
+npm run worker:webhook
+```
+
+O worker agora executa dois blocos no mesmo ciclo:
+
+- reprocessamento de `webhook_events` retryable
+- envio de `outbox_messages` pendentes ou falhas
+
+Variáveis úteis:
+
+- `WEBHOOK_WORKER_POLL_INTERVAL_MS`: intervalo entre polls
+- `WEBHOOK_WORKER_BATCH_LIMIT`: tamanho do lote por ciclo
+- `WEBHOOK_WORKER_LEASE_SECONDS`: duração do lease por evento
+- `WEBHOOK_WORKER_STATUSES`: statuses considerados no worker, ex.: `failed` ou `failed,received`
+
+No deploy da VPS Ubuntu, a recomendação é rodar a API e o worker como processos separados no PM2.
 
 ### Abrir o painel web (MVP)
 

@@ -37,6 +37,7 @@ exports.create = async (...args) => {
   let conteudo;
   let tipo;
   let waMessageId;
+  let client = db;
 
   if (args.length === 1 && args[0] && typeof args[0] === "object") {
     empresaId = args[0].empresa_id;
@@ -45,6 +46,7 @@ exports.create = async (...args) => {
     conteudo = args[0].conteudo;
     tipo = args[0].tipo ?? "text";
     waMessageId = args[0].wa_message_id ?? null;
+    client = args[0].client || db;
   } else {
     empresaId = args[0];
     const payload = args[1] || {};
@@ -53,9 +55,10 @@ exports.create = async (...args) => {
     conteudo = payload.conteudo;
     tipo = payload.tipo ?? "text";
     waMessageId = payload.wa_message_id ?? null;
+    client = payload.client || db;
   }
 
-  const result = await db.query(
+  const result = await client.query(
     `INSERT INTO mensagens (empresa_id, contato_id, direcao, conteudo, tipo, wa_message_id)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,

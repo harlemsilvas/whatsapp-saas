@@ -1,17 +1,26 @@
+const fs = require("fs");
+const path = require("path");
 const createMigrationDb = require("./_migrationDb");
 const db = createMigrationDb();
 
-async function ensureUnreadSchema() {
-  await db.query(
-    "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS lida_em TIMESTAMP NULL",
+async function applyWebhookEventsMigration() {
+  const sqlPath = path.resolve(
+    __dirname,
+    "..",
+    "docker",
+    "db",
+    "migrations",
+    "003-webhook-events.sql",
   );
+  const sql = fs.readFileSync(sqlPath, "utf8");
+  await db.query(sql);
 }
 
 async function main() {
   try {
-    await ensureUnreadSchema();
+    await applyWebhookEventsMigration();
     // eslint-disable-next-line no-console
-    console.log("✅ Migração OK: mensagens.lida_em disponível");
+    console.log("✅ Migração OK: tabela webhook_events disponível");
   } catch (err) {
     const msg = String(err?.message || "");
     if (
@@ -21,7 +30,7 @@ async function main() {
     ) {
       // eslint-disable-next-line no-console
       console.error(
-        "❌ Falha na migração: sem permissão para ALTER TABLE. Rode com um usuário dono das tabelas (ex.: DB_USER=postgres/DB_PASS=postgres no docker-compose).",
+        "❌ Falha na migração: sem permissão para CREATE/ALTER. Rode com um usuário dono das tabelas ou superusuário do banco.",
       );
       process.exitCode = 1;
       return;

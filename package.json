@@ -9,10 +9,16 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "worker:webhook": "node src/webhookWorker.js",
     "verify:whatsapp": "node scripts/verifyWhatsAppAuth.js",
     "token:update": "node scripts/updateWhatsAppToken.js",
     "db:migrate:unread": "node scripts/migrateUnread.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "db:migrate:webhook-events": "node scripts/migrateWebhookEvents.js",
+    "db:migrate:webhook-events:retry-lease": "node scripts/migrateWebhookEventRetryLease.js",
+    "db:migrate:outbox": "node scripts/migrateOutboxMessages.js",
+    "db:migrate:outbox:provider-status": "node scripts/migrateOutboxProviderStatus.js",
+    "webhook:reprocess": "node scripts/reprocessWebhookEvents.js",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",

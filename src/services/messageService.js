@@ -1,10 +1,15 @@
 const Contato = require("../models/Contato");
 const Empresa = require("../models/Empresa");
 const Mensagem = require("../models/Mensagem");
+const OutboxMessage = require("../models/OutboxMessage");
 const Conversa = require("../models/Conversa");
 const fluxoService = require("./fluxoService");
 const iaService = require("./iaService");
+const {
+  enqueueOutgoingTextMessage,
+} = require("./outgoingMessageService");
 const whatsappService = require("./whatsappService");
+const { extractEvents } = require("./webhookEventService");
 const logger = require("../utils/logger");
 const env = require("../config/env");
 const { normalizeTelefoneBR } = require("../utils/phone");
@@ -22,6 +27,20 @@ function normalizePhoneDigits(value) {
   if (digits.startsWith("55")) return digits;
   if (digits.length === 10 || digits.length === 11) return `55${digits}`;
   return digits;
+}
+
+// Marcador de versão/diagnóstico (aparece apenas no startup do processo)
+try {
+  const alertTo = normalizePhoneDigits(process.env.HUMAN_ALERT_WHATSAPP_TO);
+  const templateName = String(
+    process.env.HUMAN_ALERT_TEMPLATE_NAME || "",
+  ).trim();
+  logger.info("messageService carregado (alerta humano)", {
+    humanAlertTo: maskPhone(alertTo),
+    humanAlertTemplateConfigured: Boolean(templateName),
+  });
+} catch (_) {
+  // não quebra o serviço por causa de log
 }
 
 async function notifyHumanAttendant({
@@ -234,17 +253,22 @@ async function maybeSendReengagementTemplate({
   };
 }
 
-exports.processar = async (payload) => {
-  const value = payload?.entry?.[0]?.changes?.[0]?.value;
-  const msg = value?.messages?.[0];
-  const status = value?.statuses?.[0];
-  const metaPhoneNumberId = value?.metadata?.phone_number_id;
+async function processarEvento(event) {
+  const value = event?.payload || {};
+  const msg = event?.message || null;
+  const status = event?.status || null;
+  const metaPhoneNumberId = event?.metadata?.phone_number_id;
+  const webhookEventId = event?.webhookEventId || null;
 
   // Eventos de status (delivered/read/etc) não exigem resposta do bot.
   if (!msg && status) {
+    const reconciled = status?.id
+      ? await OutboxMessage.markProviderStatus(String(status.id).trim(), status.status, status)
+      : null;
     logger.info("Evento de status ignorado", {
       status: status.status,
       id: status.id,
+      reconciledOutboxId: reconciled?.id || null,
     });
     return;
   }
@@ -477,123 +501,15 @@ exports.processar = async (payload) => {
       }
     }
 
-    stage = "whatsapp_send";
-    let sendTo = numero;
-
-    const sendAndHandleOutsideWindow = async (sendFn) => {
-      try {
-        await sendFn();
-      } catch (err) {
-        if (err && err.whatsappReason === "outside_24h_window") {
-          await setBotStatusSafe(
-            empresa_id,
-            contato.id,
-            {
-              reason: "outside_24h_window",
-              details: { graph: err.whatsappGraph || null },
-            },
-            { stage },
-          );
-
-          logger.warn("Resposta não enviada (fora da janela 24h)", {
-            empresaId: empresa_id,
-            contatoId: contato.id,
-            to: maskPhone(sendTo),
-            graph: err.whatsappGraph || null,
-            botReason: "outside_24h_window",
-          });
-
-          try {
-            const templateResult = await maybeSendReengagementTemplate({
-              sendTo,
-              empresa,
-              useEnvWhatsApp,
-              outsideWindowGraph: err.whatsappGraph || null,
-              empresaId: empresa_id,
-              contatoId: contato.id,
-            });
-
-            await setBotStatusSafe(
-              empresa_id,
-              contato.id,
-              {
-                reason: "outside_24h_window",
-                details: {
-                  graph: err.whatsappGraph || null,
-                  template: templateResult,
-                },
-              },
-              { stage },
-            );
-          } catch (templateErr) {
-            await setBotStatusSafe(
-              empresa_id,
-              contato.id,
-              {
-                reason: "outside_24h_window",
-                details: {
-                  graph: err.whatsappGraph || null,
-                  template: {
-                    attempted: true,
-                    outcome: "failed",
-                    message: templateErr.message,
-                  },
-                },
-              },
-              { stage },
-            );
-
-            logger.warn("Falha ao enviar template de retomada", {
-              empresaId: empresa_id,
-              contatoId: contato.id,
-              to: maskPhone(sendTo),
-              message: templateErr.message,
-            });
-          }
-
-          return { aborted: true };
-        }
-        throw err;
-      }
-      return { aborted: false };
-    };
-
-    if (useEnvWhatsApp) {
-      const isProd = process.env.NODE_ENV === "production";
-      const meuTelefone = normalizeTelefoneBR(process.env.MEU_TELEFONE);
-      if (!isProd && meuTelefone) {
-        if (meuTelefone !== numero) {
-          logger.warn(
-            "Fallback ativo: redirecionando envio para MEU_TELEFONE",
-            {
-              originalTo: maskPhone(numero),
-              redirectedTo: maskPhone(meuTelefone),
-            },
-          );
-        }
-        sendTo = meuTelefone;
-      }
-
-      const result = await sendAndHandleOutsideWindow(() =>
-        whatsappService.enviarMensagem(sendTo, resposta),
-      );
-      if (result.aborted) return;
-    } else {
-      const result = await sendAndHandleOutsideWindow(() =>
-        whatsappService.enviarMensagem(sendTo, resposta, {
-          token: empresa.whatsapp_token || null,
-          phoneId: empresa.phone_number_id || null,
-        }),
-      );
-      if (result.aborted) return;
-    }
-
-    stage = "mensagem_create_out";
-    await Mensagem.create({
-      empresa_id,
-      contato_id: contato.id,
-      direcao: "saida",
-      conteudo: resposta,
+    stage = "outbox_enqueue";
+    const queued = await enqueueOutgoingTextMessage({
+      empresa,
+      empresaId: empresa_id,
+      contato,
+      webhookEventId,
+      responseText: resposta,
+      originalNumber: numero,
+      useEnvWhatsApp,
     });
 
     stage = "clear_bot_status";
@@ -607,7 +523,13 @@ exports.processar = async (payload) => {
       { stage },
     );
 
-    logger.info("Mensagem respondida", { empresaId: empresa_id });
+    logger.info("Mensagem enfileirada para envio", {
+      empresaId: empresa_id,
+      contatoId: contato.id,
+      mensagemId: queued?.mensagemSaida?.id || null,
+      outboxId: queued?.outbox?.id || null,
+      to: maskPhone(queued?.sendTo || numero),
+    });
   } catch (err) {
     if (contatoIdForDebug) {
       await setBotStatusSafe(
@@ -624,5 +546,15 @@ exports.processar = async (payload) => {
       );
     }
     throw err;
+  }
+}
+
+exports.processarEvento = processarEvento;
+
+exports.processar = async (payload) => {
+  const events = extractEvents(payload);
+
+  for (const event of events) {
+    await processarEvento(event);
   }
 };
