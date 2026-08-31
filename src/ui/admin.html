@@ -6,14 +6,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin • Inbox</title>
   <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081018;
+      --bg-elevated: #0d1722;
+      --bg-soft: #12202d;
+      --bg-accent: #1a2d3d;
+      --border: #223649;
+      --border-strong: #33506b;
+      --text: #ebf3fb;
+      --text-muted: #94a9bc;
+      --success: #5fd1a2;
+      --warning: #f1ca63;
+      --danger: #ff8795;
+      --info: #73c2ff;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+    }
+
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(68, 129, 196, 0.22), transparent 28%),
+        radial-gradient(circle at top right, rgba(95, 209, 162, 0.18), transparent 24%),
+        linear-gradient(180deg, #06111a 0%, #081018 100%);
     }
 
     header {
       padding: 12px 16px;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid var(--border);
+      background: rgba(6, 15, 24, 0.82);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
     }
 
     main {
@@ -27,7 +54,10 @@
     }
 
     .left {
-      border-right: 1px solid #ddd;
+      border-right: 1px solid var(--border);
+      display: grid;
+      grid-template-rows: auto minmax(220px, 42%) 1fr;
+      background: rgba(9, 17, 26, 0.72);
     }
 
     .row {
@@ -39,22 +69,38 @@
 
     label {
       font-size: 12px;
-      color: #444;
+      color: var(--text-muted);
+      letter-spacing: 0.03em;
     }
 
     input {
       padding: 8px;
-      border: 1px solid #ccc;
+      border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 14px;
+      color: var(--text);
+      background: var(--bg-soft);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    input::placeholder {
+      color: #6f8598;
     }
 
     button {
       padding: 8px 12px;
-      border: 1px solid #ccc;
+      border: 1px solid var(--border-strong);
       border-radius: 6px;
-      background: #f7f7f7;
+      background: linear-gradient(180deg, #163047 0%, #122536 100%);
+      color: var(--text);
       cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: #4f7aa0;
+      background: linear-gradient(180deg, #1a3953 0%, #153047 100%);
     }
 
     button:disabled {
@@ -70,16 +116,22 @@
 
     .item {
       padding: 10px 12px;
-      border-bottom: 1px solid #eee;
+      border-bottom: 1px solid rgba(34, 54, 73, 0.72);
       cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .item:hover {
+      background: rgba(26, 45, 61, 0.42);
     }
 
     .item.active {
-      background: #f2f2f2;
+      background: linear-gradient(90deg, rgba(40, 74, 102, 0.8) 0%, rgba(20, 35, 49, 0.8) 100%);
+      box-shadow: inset 3px 0 0 #73c2ff;
     }
 
     .muted {
-      color: #666;
+      color: var(--text-muted);
       font-size: 12px;
     }
 
@@ -87,8 +139,58 @@
       display: inline-block;
       padding: 2px 8px;
       border-radius: 999px;
-      border: 1px solid #ccc;
+      border: 1px solid var(--border-strong);
       font-size: 12px;
+      background: rgba(19, 33, 46, 0.88);
+      color: var(--text);
+    }
+
+    .badge.status-failed {
+      border-color: rgba(255, 135, 149, 0.7);
+      background: rgba(88, 26, 37, 0.9);
+      color: #ffd4da;
+    }
+
+    .badge.status-processing {
+      border-color: rgba(115, 194, 255, 0.7);
+      background: rgba(23, 52, 78, 0.92);
+      color: #d9f0ff;
+    }
+
+    .badge.status-pending {
+      border-color: rgba(241, 202, 99, 0.68);
+      background: rgba(73, 58, 18, 0.92);
+      color: #fff3c2;
+    }
+
+    .badge.status-sent {
+      border-color: rgba(95, 209, 162, 0.62);
+      background: rgba(20, 63, 50, 0.92);
+      color: #d7fff0;
+    }
+
+    .badge.meta-sent {
+      border-color: rgba(115, 194, 255, 0.58);
+      background: rgba(18, 46, 69, 0.9);
+      color: #d8efff;
+    }
+
+    .badge.meta-delivered {
+      border-color: rgba(95, 209, 162, 0.62);
+      background: rgba(16, 70, 53, 0.92);
+      color: #d6fff1;
+    }
+
+    .badge.meta-read {
+      border-color: rgba(171, 125, 255, 0.62);
+      background: rgba(52, 33, 86, 0.92);
+      color: #eee2ff;
+    }
+
+    .badge.meta-failed {
+      border-color: rgba(255, 135, 149, 0.7);
+      background: rgba(88, 26, 37, 0.9);
+      color: #ffd4da;
     }
 
     .chat {
@@ -96,33 +198,38 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      background:
+        linear-gradient(180deg, rgba(10, 18, 28, 0.84) 0%, rgba(8, 16, 24, 0.98) 100%);
     }
 
     .msg {
-      border: 1px solid #e5e5e5;
-      border-radius: 10px;
-      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
       max-width: 720px;
       white-space: pre-wrap;
       word-break: break-word;
+      box-shadow: var(--shadow);
     }
 
     .msg.in {
       align-self: flex-start;
-      background: #fff;
+      background: linear-gradient(180deg, #132432 0%, #10202c 100%);
     }
 
     .msg.out {
       align-self: flex-end;
-      background: #f9f9f9;
+      background: linear-gradient(180deg, #12372d 0%, #0f2e26 100%);
+      border-color: rgba(95, 209, 162, 0.32);
     }
 
     .compose {
       margin-top: auto;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid var(--border);
       padding: 12px;
       display: flex;
       gap: 8px;
+      background: rgba(8, 16, 24, 0.96);
     }
 
     .compose input {
@@ -130,25 +237,35 @@
     }
 
     .error {
-      color: #b00020;
+      color: var(--danger);
       font-size: 12px;
     }
 
     .panel {
-      border: 1px solid #e5e5e5;
-      border-radius: 10px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
       padding: 10px;
       margin-top: 12px;
-      background: #fcfcfc;
+      background: linear-gradient(180deg, rgba(14, 25, 37, 0.98) 0%, rgba(10, 19, 28, 0.98) 100%);
+      box-shadow: var(--shadow);
     }
 
     .panel h3 {
       margin: 0 0 8px;
       font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
     }
 
     .outbox-item {
-      border-top: 1px solid #eee;
+      border-top: 1px solid rgba(34, 54, 73, 0.72);
       padding: 8px 0;
     }
 
@@ -163,6 +280,140 @@
       gap: 6px;
       flex-wrap: wrap;
       align-items: center;
+    }
+
+    .status-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 6px;
+    }
+
+    .timeline-line {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .timeline-pill {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(15, 27, 39, 0.9);
+      border: 1px solid rgba(51, 80, 107, 0.72);
+    }
+
+    .section-title {
+      padding: 10px 12px 0;
+      font-size: 12px;
+      color: #7f97aa;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .section-body {
+      padding: 0 12px 12px;
+      overflow: auto;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .summary-card {
+      border: 1px solid rgba(51, 80, 107, 0.72);
+      border-radius: 12px;
+      padding: 8px;
+      background: linear-gradient(180deg, rgba(18, 32, 45, 0.95) 0%, rgba(14, 25, 37, 0.95) 100%);
+    }
+
+    .summary-card strong {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 2px;
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .filter-chip {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .filter-chip.active {
+      background: linear-gradient(180deg, #214763 0%, #1b3448 100%);
+      color: #fff;
+      border-color: #73c2ff;
+    }
+
+    .outbox-global-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px;
+      margin-bottom: 8px;
+      background: linear-gradient(180deg, rgba(17, 29, 40, 0.98) 0%, rgba(13, 23, 34, 0.98) 100%);
+    }
+
+    .outbox-global-item.failed {
+      border-color: rgba(255, 135, 149, 0.6);
+      background: linear-gradient(180deg, rgba(60, 22, 31, 0.92) 0%, rgba(33, 15, 20, 0.96) 100%);
+    }
+
+    .outbox-global-item.processing {
+      border-color: rgba(115, 194, 255, 0.6);
+      background: linear-gradient(180deg, rgba(19, 41, 64, 0.92) 0%, rgba(13, 27, 42, 0.96) 100%);
+    }
+
+    .outbox-global-item.pending {
+      border-color: rgba(241, 202, 99, 0.58);
+      background: linear-gradient(180deg, rgba(59, 48, 18, 0.92) 0%, rgba(32, 26, 12, 0.96) 100%);
+    }
+
+    .outbox-global-item.sent {
+      border-color: rgba(95, 209, 162, 0.46);
+      background: linear-gradient(180deg, rgba(18, 55, 45, 0.92) 0%, rgba(11, 31, 26, 0.96) 100%);
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(90, 122, 150, 0.46);
+      border-radius: 999px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(8, 16, 24, 0.2);
+    }
+
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .left {
+        grid-template-rows: auto auto auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .chat {
+        min-height: 50vh;
+      }
     }
   </style>
 </head>
@@ -205,7 +456,16 @@
 
   <main>
     <div class="col left">
-      <ul id="conversas" class="list"></ul>
+      <div class="section-title">Outbox da empresa</div>
+      <div class="section-body">
+        <div id="outboxGlobalPanel" class="panel">
+          <div class="muted">Carregue a empresa para visualizar a fila.</div>
+        </div>
+      </div>
+      <div class="section-title">Conversas</div>
+      <div style="overflow:auto">
+        <ul id="conversas" class="list"></ul>
+      </div>
     </div>
     <div class="col">
       <div id="chat" class="chat">
@@ -236,6 +496,7 @@
     const newNomeEl = $("newNome");
     const newTagsEl = $("newTags");
     const btnCreate = $("btnCreate");
+    const outboxGlobalPanelEl = $("outboxGlobalPanel");
 
     let currentContatoId = null;
     let currentContato = null;
@@ -248,6 +509,8 @@
     let lastRenderedLastMessageId = null;
     let lastRenderedStateKey = null;
     let lastConversasRefreshAt = 0;
+    let currentOutboxStatusFilter = "all";
+    let lastGlobalOutboxKey = null;
 
     function setError(msg) {
       errEl.textContent = msg || "";
@@ -471,8 +734,251 @@
       return status;
     }
 
+    function describeQueueStatus(status) {
+      const value = String(status || "").trim().toLowerCase();
+      if (value === "failed") return { label: "Falha na fila", className: "status-failed" };
+      if (value === "processing") return { label: "Em processamento", className: "status-processing" };
+      if (value === "pending") return { label: "Aguardando envio", className: "status-pending" };
+      if (value === "sent") return { label: "Enviado para Meta", className: "status-sent" };
+      return { label: value || "Desconhecido", className: "" };
+    }
+
+    function describeProviderStatus(status) {
+      const value = String(status || "").trim().toLowerCase();
+      if (!value) return null;
+      if (value === "sent") return { label: "Meta recebeu", className: "meta-sent" };
+      if (value === "delivered") return { label: "Entregue ao cliente", className: "meta-delivered" };
+      if (value === "read") return { label: "Cliente leu", className: "meta-read" };
+      if (value === "failed") return { label: "Falha na Meta", className: "meta-failed" };
+      return { label: `Meta: ${value}`, className: "" };
+    }
+
+    function renderStatusBadge({ label, className = "" }) {
+      const span = document.createElement("span");
+      span.className = `badge${className ? ` ${className}` : ""}`;
+      span.textContent = label;
+      return span;
+    }
+
+    function renderOutboxStatusRow(item) {
+      const row = document.createElement("div");
+      row.className = "status-row";
+
+      row.appendChild(renderStatusBadge(describeQueueStatus(item?.status)));
+
+      const provider = describeProviderStatus(item?.provider_status);
+      if (provider) {
+        row.appendChild(renderStatusBadge(provider));
+      }
+
+      return row;
+    }
+
+    function statusQueryValue(status) {
+      return status && status !== "all" ? status : "";
+    }
+
+    function buildGlobalOutboxStateKey(payload, filter) {
+      const summary = payload?.summary || {};
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      return JSON.stringify({
+        filter,
+        summary: {
+          total: Number(summary.total || 0),
+          pending: Number(summary.pending || 0),
+          processing: Number(summary.processing || 0),
+          failed: Number(summary.failed || 0),
+          sent: Number(summary.sent || 0),
+        },
+        items: items.map((item) => [
+          item.id,
+          item.status,
+          item.provider_status || null,
+          item.contato_id || null,
+          item.attempt_count || 0,
+          item.next_retry_at || null,
+        ]),
+      });
+    }
+
     function canRetryOutbox(item) {
       return item && item.status !== "sent";
+    }
+
+    async function retryOutboxItem(empresaId, itemId) {
+      return apiPost(adminUrl(`empresas/${empresaId}/outbox/${itemId}/retry`));
+    }
+
+    function renderGlobalOutbox(payload, { filter = "all" } = {}) {
+      outboxGlobalPanelEl.innerHTML = "";
+
+      const summary = payload?.summary || {};
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+
+      const header = document.createElement("div");
+      header.className = "panel-header";
+      header.innerHTML = `
+        <h3 style="margin:0">Fila de envio</h3>
+        <button id="btnRefreshOutbox" type="button">Atualizar</button>
+      `;
+      outboxGlobalPanelEl.appendChild(header);
+
+      const summaryGrid = document.createElement("div");
+      summaryGrid.className = "summary-grid";
+      summaryGrid.innerHTML = `
+        <div class="summary-card"><strong>${Number(summary.total || 0)}</strong><span class="muted">Total</span></div>
+        <div class="summary-card"><strong>${Number(summary.pending || 0)}</strong><span class="muted">Pendentes</span></div>
+        <div class="summary-card"><strong>${Number(summary.failed || 0)}</strong><span class="muted">Falhas</span></div>
+        <div class="summary-card"><strong>${Number(summary.processing || 0)}</strong><span class="muted">Processando</span></div>
+        <div class="summary-card"><strong>${Number(summary.sent || 0)}</strong><span class="muted">Enviadas</span></div>
+      `;
+      outboxGlobalPanelEl.appendChild(summaryGrid);
+
+      const filters = [
+        { id: "all", label: "Todas" },
+        { id: "failed", label: "Falhas" },
+        { id: "pending", label: "Pendentes" },
+        { id: "processing", label: "Processando" },
+        { id: "sent", label: "Enviadas" },
+      ];
+
+      const filterBar = document.createElement("div");
+      filterBar.className = "filter-bar";
+      for (const entry of filters) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "filter-chip" + (entry.id === filter ? " active" : "");
+        btn.textContent = entry.label;
+        btn.addEventListener("click", async () => {
+          if (currentOutboxStatusFilter === entry.id) return;
+          currentOutboxStatusFilter = entry.id;
+          lastGlobalOutboxKey = null;
+          try {
+            setError("");
+            setStatus("Carregando outbox…");
+            await loadGlobalOutbox();
+          } catch (e) {
+            setError(e.message);
+            setStatus("");
+          }
+        });
+        filterBar.appendChild(btn);
+      }
+      outboxGlobalPanelEl.appendChild(filterBar);
+
+      const btnRefreshOutbox = header.querySelector("#btnRefreshOutbox");
+      btnRefreshOutbox.addEventListener("click", async () => {
+        try {
+          setError("");
+          setStatus("Atualizando outbox…");
+          lastGlobalOutboxKey = null;
+          await loadGlobalOutbox();
+        } catch (e) {
+          setError(e.message);
+          setStatus("");
+        }
+      });
+
+      if (items.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent =
+          filter === "all"
+            ? "Nenhum item na fila para esta empresa."
+            : `Nenhum item com status "${filter}".`;
+        outboxGlobalPanelEl.appendChild(empty);
+        return;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("div");
+        row.className = `outbox-global-item ${String(item.status || "").toLowerCase()}`;
+
+        const contatoLabel = item.contato_id
+          ? `Contato #${item.contato_id}`
+          : "Sem contato";
+        const phone = formatTelefoneDisplay(item.recipient || "") || item.recipient || "";
+        const createdAt = item.created_at ? new Date(item.created_at).toLocaleString() : "";
+        const nextRetryAt = item.next_retry_at ? new Date(item.next_retry_at).toLocaleString() : "";
+        const processedAt = item.processed_at ? new Date(item.processed_at).toLocaleString() : "";
+        const providerId = item.provider_message_id ? `Meta ID ${item.provider_message_id}` : "";
+
+        row.innerHTML = `
+          <div><strong>${escapeHtml(item.content || "(sem conteúdo)")}</strong></div>
+          <div class="muted" style="margin-top:4px">${escapeHtml(contatoLabel)} • ${escapeHtml(phone)}</div>
+          ${item.last_error ? `<div class="error" style="margin-top:6px">${escapeHtml(item.last_error)}</div>` : ""}
+        `;
+
+        row.appendChild(renderOutboxStatusRow(item));
+
+        const timeline = document.createElement("div");
+        timeline.className = "timeline-line";
+        if (createdAt) {
+          const created = document.createElement("span");
+          created.className = "timeline-pill";
+          created.textContent = `Criado ${createdAt}`;
+          timeline.appendChild(created);
+        }
+        if (nextRetryAt && String(item.status || "").toLowerCase() !== "sent") {
+          const retry = document.createElement("span");
+          retry.className = "timeline-pill";
+          retry.textContent = `Retry ${nextRetryAt}`;
+          timeline.appendChild(retry);
+        }
+        if (processedAt) {
+          const processed = document.createElement("span");
+          processed.className = "timeline-pill";
+          processed.textContent = `Processado ${processedAt}`;
+          timeline.appendChild(processed);
+        }
+        if (providerId) {
+          const provider = document.createElement("span");
+          provider.className = "timeline-pill";
+          provider.textContent = providerId;
+          timeline.appendChild(provider);
+        }
+        row.appendChild(timeline);
+
+        const meta = document.createElement("div");
+        meta.className = "outbox-meta";
+
+        if (item.contato_id) {
+          const btnOpen = document.createElement("button");
+          btnOpen.type = "button";
+          btnOpen.textContent = "Abrir conversa";
+          btnOpen.addEventListener("click", () => selectContato(item.contato_id));
+          meta.appendChild(btnOpen);
+        }
+
+        if (canRetryOutbox(item)) {
+          const btnRetry = document.createElement("button");
+          btnRetry.type = "button";
+          btnRetry.textContent = "Reenviar agora";
+          btnRetry.addEventListener("click", async () => {
+            const empresaId = Number(empresaIdInput.value || 0);
+            btnRetry.disabled = true;
+            try {
+              setError("");
+              setStatus("Reenviando item da outbox…");
+              await retryOutboxItem(empresaId, item.id);
+              await loadGlobalOutbox({ silent: true });
+              if (currentContatoId && Number(currentContatoId) === Number(item.contato_id || 0)) {
+                await refreshCurrent({ silent: true });
+              }
+              setStatus("Item reenviado");
+            } catch (e) {
+              setError(e.message);
+              setStatus("");
+            } finally {
+              btnRetry.disabled = false;
+            }
+          });
+          meta.appendChild(btnRetry);
+        }
+
+        row.appendChild(meta);
+        outboxGlobalPanelEl.appendChild(row);
+      }
     }
 
     function renderOutboxPanel(items, empresaId, contatoId) {
@@ -497,15 +1003,45 @@
 
         const when = item.created_at ? new Date(item.created_at).toLocaleString() : "";
         const nextRetryAt = item.next_retry_at ? new Date(item.next_retry_at).toLocaleString() : "";
-        const providerId = item.provider_message_id ? ` • provider ${item.provider_message_id}` : "";
+        const processedAt = item.processed_at ? new Date(item.processed_at).toLocaleString() : "";
+        const providerId = item.provider_message_id ? `Meta ID ${item.provider_message_id}` : "";
         const errorLine = item.last_error ? `Erro: ${item.last_error}` : "";
 
         row.innerHTML = `
           <div><strong>${escapeHtml(item.content || "(sem conteúdo)")}</strong></div>
-          <div class="muted">${escapeHtml(formatOutboxStatus(item))} • tentativa ${Number(item.attempt_count || 0)}${providerId ? escapeHtml(providerId) : ""}</div>
-          <div class="muted">${when ? `Criado em ${escapeHtml(when)}` : ""}${nextRetryAt ? ` • retry em ${escapeHtml(nextRetryAt)}` : ""}</div>
+          <div class="muted">Tentativa ${Number(item.attempt_count || 0)}</div>
           ${errorLine ? `<div class="error" style="margin-top:6px">${escapeHtml(errorLine)}</div>` : ""}
         `;
+
+        row.appendChild(renderOutboxStatusRow(item));
+
+        const timeline = document.createElement("div");
+        timeline.className = "timeline-line";
+        if (when) {
+          const created = document.createElement("span");
+          created.className = "timeline-pill";
+          created.textContent = `Criado ${when}`;
+          timeline.appendChild(created);
+        }
+        if (nextRetryAt && String(item.status || "").toLowerCase() !== "sent") {
+          const retry = document.createElement("span");
+          retry.className = "timeline-pill";
+          retry.textContent = `Retry ${nextRetryAt}`;
+          timeline.appendChild(retry);
+        }
+        if (processedAt) {
+          const processed = document.createElement("span");
+          processed.className = "timeline-pill";
+          processed.textContent = `Processado ${processedAt}`;
+          timeline.appendChild(processed);
+        }
+        if (providerId) {
+          const provider = document.createElement("span");
+          provider.className = "timeline-pill";
+          provider.textContent = providerId;
+          timeline.appendChild(provider);
+        }
+        row.appendChild(timeline);
 
         const meta = document.createElement("div");
         meta.className = "outbox-meta";
@@ -518,9 +1054,8 @@
             try {
               setError("");
               setStatus("Reenviando item da outbox…");
-              await apiPost(
-                adminUrl(`empresas/${empresaId}/outbox/${item.id}/retry`),
-              );
+              await retryOutboxItem(empresaId, item.id);
+              await loadGlobalOutbox({ silent: true });
               await selectContato(contatoId);
               setStatus("Item reenviado");
             } catch (e) {
@@ -538,6 +1073,35 @@
       }
 
       return panel;
+    }
+
+    async function loadGlobalOutbox({ silent = false } = {}) {
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) throw new Error("Empresa ID inválido");
+
+      const qs = new URLSearchParams({ limit: "30" });
+      const status = statusQueryValue(currentOutboxStatusFilter);
+      if (status) qs.set("status", status);
+
+      const payload = await apiGet(
+        adminUrl(`empresas/${empresaId}/outbox?${qs.toString()}`),
+      );
+
+      const nextKey = buildGlobalOutboxStateKey(
+        payload,
+        currentOutboxStatusFilter,
+      );
+      if (nextKey !== String(lastGlobalOutboxKey || "")) {
+        lastGlobalOutboxKey = nextKey;
+        renderGlobalOutbox(payload, { filter: currentOutboxStatusFilter });
+      }
+
+      if (!silent) {
+        const count = Array.isArray(payload?.items) ? payload.items.length : 0;
+        setStatus(`Outbox: ${count} item(ns)`);
+      }
+
+      return payload;
     }
 
     function renderChat(payload, outboxItems = []) {
@@ -731,6 +1295,7 @@
 
       const data = await apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`));
       renderConversas(data);
+      await loadGlobalOutbox({ silent: true });
       setStatus(`Conversas: ${data.length}`);
     }
 
@@ -802,7 +1367,10 @@
         const now = Date.now();
         if (!lastConversasRefreshAt || now - lastConversasRefreshAt > POLL_CONVERSAS_MS) {
           lastConversasRefreshAt = now;
-          const conversas = await apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`));
+          const [conversas] = await Promise.all([
+            apiGet(adminUrl(`empresas/${empresaId}/conversas?limit=100`)),
+            loadGlobalOutbox({ silent: true }),
+          ]);
           renderConversas(conversas);
         }
 
