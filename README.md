@@ -243,6 +243,16 @@ curl -sS "http://localhost:3000/api/empresas/1/onboarding" \
 
 ## Admin (Inbox / Conversas)
 
+Para acesso em producao, uso do painel, teste ponta a ponta e diagnostico da
+VPS, consulte [docs/guia-uso-operacao.md](docs/guia-uso-operacao.md).
+
+Painel atual: `https://bot.hrmmotos.com.br/api/admin/ui?key=SUA_ADMIN_API_KEY`.
+Nao registre a chave real no README ou em outros arquivos versionados.
+
+O botão `Configurar WhatsApp` salva `phone_number_id` e token por empresa,
+valida as credenciais na Graph API e nunca devolve o token armazenado ao
+navegador.
+
 ### Migração (não lidas)
 
 Para habilitar contagem de **não lidas**, a tabela `mensagens` precisa da coluna `lida_em`.
@@ -399,5 +409,10 @@ Enviar mensagem manual (WhatsApp + salva em `mensagens` como `saida`):
 curl -sS -X POST "http://localhost:3000/api/admin/empresas/1/conversas/1/send" \
 	-H "Content-Type: application/json" \
 	-H "x-api-key: $ADMIN_API_KEY" \
+	-H "Idempotency-Key: comando-unico-123" \
 	-d '{"text":"Olá! Posso ajudar?"}' | jq
 ```
+
+Reutilize a mesma `Idempotency-Key` ao repetir uma requisição cujo resultado é
+incerto. A API retornará a mensagem/outbox já criada sem duplicar o envio. Se o
+header não for informado, a API gera uma chave nova e a devolve em `command_id`.

@@ -37,6 +37,7 @@ describe("adminConversaController.enviarManual", () => {
     const req = {
       params: { empresaId: "1", contatoId: "10" },
       body: { text: "Ola manual" },
+      get: jest.fn(() => "admin-command-123"),
     };
     const res = {
       status: jest.fn(function status(code) {
@@ -55,6 +56,7 @@ describe("adminConversaController.enviarManual", () => {
     expect(enqueueOutgoingTextMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         empresaId: 1,
+        commandId: "admin-command-123",
         responseText: "Ola manual",
         originalNumber: "5511999999999",
         useEnvWhatsApp: false,
@@ -66,9 +68,67 @@ describe("adminConversaController.enviarManual", () => {
         mensagem: expect.objectContaining({ id: 2001 }),
         outbox: expect.objectContaining({ id: 3001, status: "pending" }),
         contato: expect.objectContaining({ atendimento_modo: "humano" }),
+        command_id: "admin-command-123",
+        duplicate: false,
       }),
     );
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("retorna envio existente quando Idempotency-Key já foi processada", async () => {
+    const enqueueOutgoingTextMessage = jest.fn(async () => ({
+      mensagemSaida: { id: 2001, conteudo: "Ola manual" },
+      outbox: { id: 3001, status: "sent" },
+      sendTo: "5511999999999",
+      duplicate: true,
+    }));
+
+    jest.doMock("../src/models/Empresa", () => ({
+      findById: jest.fn(async () => ({
+        id: 1,
+        whatsapp_token: "tok",
+        phone_number_id: "PHONE_ID",
+      })),
+    }));
+    jest.doMock("../src/models/Contato", () => ({
+      findById: jest.fn(async () => ({ id: 10, telefone: "5511999999999" })),
+      assumirAtendimento: jest.fn(async () => ({
+        id: 10,
+        atendimento_modo: "humano",
+      })),
+    }));
+    jest.doMock("../src/models/Conversa", () => ({}));
+    jest.doMock("../src/services/outgoingMessageService", () => ({
+      enqueueOutgoingTextMessage,
+    }));
+
+    const controller = require("../src/controllers/adminConversaController");
+    const req = {
+      params: { empresaId: "1", contatoId: "10" },
+      body: { text: "Ola manual" },
+      get: jest.fn(() => "same-command"),
+    };
+    const res = {
+      status: jest.fn(function status(code) {
+        this.statusCode = code;
+        return this;
+      }),
+      json: jest.fn(function json(payload) {
+        this.payload = payload;
+        return this;
+      }),
+    };
+
+    await controller.enviarManual(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command_id: "same-command",
+        duplicate: true,
+        outbox: expect.objectContaining({ id: 3001 }),
+      }),
+    );
   });
 });
 

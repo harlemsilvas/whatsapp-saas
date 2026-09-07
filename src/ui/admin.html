@@ -108,6 +108,153 @@
       cursor: not-allowed;
     }
 
+    .button-secondary {
+      background: rgba(18, 32, 45, 0.82);
+    }
+
+    .button-success {
+      border-color: rgba(95, 209, 162, 0.58);
+      background: linear-gradient(180deg, #19503f 0%, #123b30 100%);
+    }
+
+    .button-success:hover {
+      border-color: var(--success);
+      background: linear-gradient(180deg, #1e614c 0%, #174839 100%);
+    }
+
+    dialog {
+      width: min(760px, calc(100vw - 32px));
+      max-height: calc(100vh - 40px);
+      padding: 0;
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: 18px;
+      background: linear-gradient(155deg, #101f2c 0%, #09131d 72%);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.72);
+    }
+
+    dialog::backdrop {
+      background: rgba(2, 8, 13, 0.78);
+      backdrop-filter: blur(6px);
+    }
+
+    .settings-shell {
+      padding: 22px;
+      overflow: auto;
+    }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .settings-header h2 {
+      margin: 0 0 5px;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+    }
+
+    .settings-status {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 18px 0;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(7, 16, 24, 0.66);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      flex: 0 0 10px;
+      border-radius: 50%;
+      background: var(--warning);
+      box-shadow: 0 0 0 4px rgba(241, 202, 99, 0.12);
+    }
+
+    .status-dot.ready {
+      background: var(--success);
+      box-shadow: 0 0 0 4px rgba(95, 209, 162, 0.12);
+    }
+
+    .status-dot.error {
+      background: var(--danger);
+      box-shadow: 0 0 0 4px rgba(255, 135, 149, 0.12);
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .settings-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .settings-field.full {
+      grid-column: 1 / -1;
+    }
+
+    .settings-field input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .settings-help {
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .settings-meta {
+      margin-top: 18px;
+      padding: 14px;
+      border: 1px solid rgba(51, 80, 107, 0.72);
+      border-radius: 12px;
+      background: rgba(13, 26, 37, 0.72);
+    }
+
+    .settings-meta code {
+      display: block;
+      margin-top: 5px;
+      padding: 8px;
+      overflow-wrap: anywhere;
+      color: #cceaff;
+      border-radius: 8px;
+      background: rgba(4, 12, 18, 0.72);
+    }
+
+    .settings-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .settings-feedback {
+      min-height: 20px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .settings-feedback.success {
+      color: var(--success);
+    }
+
+    .settings-feedback.error {
+      color: var(--danger);
+    }
+
     .list {
       padding: 0;
       margin: 0;
@@ -414,6 +561,14 @@
       .chat {
         min-height: 50vh;
       }
+
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-field.full {
+        grid-column: auto;
+      }
     }
   </style>
 </head>
@@ -431,6 +586,9 @@
       </div>
       <div style="padding-top: 18px">
         <button id="btnLoad">Carregar</button>
+      </div>
+      <div style="padding-top: 18px">
+        <button id="btnWhatsappSettings" class="button-secondary">Configurar WhatsApp</button>
       </div>
       <div id="status" class="muted"></div>
     </div>
@@ -479,6 +637,63 @@
     </div>
   </main>
 
+  <dialog id="whatsappSettingsDialog" aria-labelledby="whatsappSettingsTitle">
+    <div class="settings-shell">
+      <div class="settings-header">
+        <div>
+          <h2 id="whatsappSettingsTitle">Configurações do WhatsApp</h2>
+          <div id="settingsCompany" class="muted">Carregando empresa...</div>
+        </div>
+        <button id="btnCloseWhatsappSettings" class="button-secondary" type="button">Fechar</button>
+      </div>
+
+      <div class="settings-status">
+        <span id="settingsStatusDot" class="status-dot"></span>
+        <div>
+          <strong id="settingsStatusTitle">Verificando configuração</strong>
+          <div id="settingsStatusDetail" class="muted">Aguarde um instante.</div>
+        </div>
+      </div>
+
+      <form id="whatsappSettingsForm">
+        <div class="settings-grid">
+          <div class="settings-field">
+            <label for="settingsPhoneId">Phone Number ID</label>
+            <input id="settingsPhoneId" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="Ex.: 993692280501871" required />
+            <div class="settings-help">Encontre em Meta for Developers → WhatsApp → Configuração da API.</div>
+          </div>
+          <div class="settings-field">
+            <label for="settingsToken">Token de acesso</label>
+            <input id="settingsToken" type="password" autocomplete="new-password"
+              placeholder="Cole um token de longa duração" />
+            <div id="settingsTokenHelp" class="settings-help">O token salvo nunca será exibido novamente.</div>
+          </div>
+          <div class="settings-field full">
+            <div class="settings-help">
+              O App ID e o Business ID não substituem o Phone Number ID. App Secret e Verify Token permanecem
+              protegidos no <code>.env</code> da VPS.
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-meta">
+          <strong>Webhook da Meta</strong>
+          <div class="settings-help">Use esta URL como callback e assine o campo <code>messages</code>.</div>
+          <code id="settingsWebhookUrl">Não configurado</code>
+          <div id="settingsVerifyTokenStatus" class="settings-help" style="margin-top: 8px"></div>
+        </div>
+
+        <div id="settingsFeedback" class="settings-feedback" role="status" aria-live="polite"></div>
+
+        <div class="settings-actions">
+          <button id="btnVerifyWhatsapp" class="button-secondary" type="button">Testar conexão atual</button>
+          <button id="btnSaveWhatsapp" class="button-success" type="submit">Salvar e validar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
   <script>
     const $ = (id) => document.getElementById(id);
 
@@ -497,6 +712,22 @@
     const newTagsEl = $("newTags");
     const btnCreate = $("btnCreate");
     const outboxGlobalPanelEl = $("outboxGlobalPanel");
+    const btnWhatsappSettings = $("btnWhatsappSettings");
+    const whatsappSettingsDialog = $("whatsappSettingsDialog");
+    const btnCloseWhatsappSettings = $("btnCloseWhatsappSettings");
+    const whatsappSettingsForm = $("whatsappSettingsForm");
+    const settingsCompanyEl = $("settingsCompany");
+    const settingsStatusDotEl = $("settingsStatusDot");
+    const settingsStatusTitleEl = $("settingsStatusTitle");
+    const settingsStatusDetailEl = $("settingsStatusDetail");
+    const settingsPhoneIdEl = $("settingsPhoneId");
+    const settingsTokenEl = $("settingsToken");
+    const settingsTokenHelpEl = $("settingsTokenHelp");
+    const settingsWebhookUrlEl = $("settingsWebhookUrl");
+    const settingsVerifyTokenStatusEl = $("settingsVerifyTokenStatus");
+    const settingsFeedbackEl = $("settingsFeedback");
+    const btnVerifyWhatsapp = $("btnVerifyWhatsapp");
+    const btnSaveWhatsapp = $("btnSaveWhatsapp");
 
     let currentContatoId = null;
     let currentContato = null;
@@ -511,6 +742,7 @@
     let lastConversasRefreshAt = 0;
     let currentOutboxStatusFilter = "all";
     let lastGlobalOutboxKey = null;
+    let pendingManualCommand = null;
 
     function setError(msg) {
       errEl.textContent = msg || "";
@@ -518,6 +750,11 @@
 
     function setStatus(msg) {
       statusEl.textContent = msg || "";
+    }
+
+    function apiError(data, status) {
+      const graphMessage = data?.graph?.message || data?.graph?.error?.message;
+      return new Error(graphMessage || data?.error || data?.message || `HTTP ${status}`);
     }
 
     function headers() {
@@ -529,16 +766,20 @@
       const res = await fetch(path, { headers: headers() });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        throw apiError(data, res.status);
       }
       return res.json();
     }
 
-    async function apiPost(path, body) {
-      const res = await fetch(path, { method: "POST", headers: headers(), body: JSON.stringify(body || {}) });
+    async function apiPost(path, body, extraHeaders = {}) {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { ...headers(), ...extraHeaders },
+        body: JSON.stringify(body || {}),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        throw apiError(data, res.status);
       }
       return res.json();
     }
@@ -547,7 +788,7 @@
       const res = await fetch(path, { method: "PUT", headers: headers(), body: JSON.stringify(body || {}) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        throw apiError(data, res.status);
       }
       return res.json();
     }
@@ -1454,7 +1695,27 @@
       setStatus("Enviando…");
 
       try {
-        await apiPost(adminUrl(`empresas/${empresaId}/conversas/${currentContatoId}/send`), { text });
+        if (
+          !pendingManualCommand ||
+          pendingManualCommand.contatoId !== currentContatoId ||
+          pendingManualCommand.text !== text
+        ) {
+          const randomId = window.crypto?.randomUUID
+            ? window.crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          pendingManualCommand = {
+            id: `admin-${empresaId}-${currentContatoId}-${randomId}`,
+            contatoId: currentContatoId,
+            text,
+          };
+        }
+
+        await apiPost(
+          adminUrl(`empresas/${empresaId}/conversas/${currentContatoId}/send`),
+          { text },
+          { "Idempotency-Key": pendingManualCommand.id },
+        );
+        pendingManualCommand = null;
         textEl.value = "";
         await selectContato(currentContatoId);
         setStatus("Enviado");
@@ -1483,6 +1744,178 @@
         setStatus("");
       } finally {
         btnRead.disabled = false;
+      }
+    }
+
+    function setSettingsFeedback(message, kind = "") {
+      settingsFeedbackEl.textContent = message || "";
+      settingsFeedbackEl.className = `settings-feedback ${kind}`.trim();
+    }
+
+    function renderWhatsappConnection({ state, title, detail }) {
+      settingsStatusDotEl.className = `status-dot ${state || ""}`.trim();
+      settingsStatusTitleEl.textContent = title;
+      settingsStatusDetailEl.textContent = detail;
+    }
+
+    function renderWhatsappSettings(empresa, onboarding) {
+      const tokenConfigured = Boolean(empresa?.whatsapp_token_configured);
+      const phoneConfigured = Boolean(empresa?.phone_number_id);
+
+      settingsCompanyEl.textContent = empresa
+        ? `Empresa ${empresa.id} · ${empresa.nome || "Sem nome"}`
+        : "Empresa não encontrada";
+      settingsPhoneIdEl.value = empresa?.phone_number_id || "";
+      settingsTokenEl.value = "";
+      settingsTokenEl.required = !tokenConfigured;
+      settingsTokenHelpEl.textContent = tokenConfigured
+        ? "Token já armazenado. Deixe vazio para mantê-lo ou informe outro para substituir."
+        : "Nenhum token armazenado. Informe um token de longa duração.";
+      settingsWebhookUrlEl.textContent =
+        onboarding?.public?.webhookCallbackUrl || "APP_PUBLIC_BASE_URL não configurada";
+      settingsVerifyTokenStatusEl.textContent = onboarding?.meta?.verifyTokenConfigured
+        ? "Verify Token configurado na VPS. O valor permanece oculto."
+        : "Verify Token ausente na VPS.";
+
+      if (tokenConfigured && phoneConfigured) {
+        renderWhatsappConnection({
+          state: "",
+          title: "Credenciais armazenadas",
+          detail: "Testando a conexão com a Graph API...",
+        });
+      } else {
+        const missing = [
+          !phoneConfigured ? "Phone Number ID" : null,
+          !tokenConfigured ? "token" : null,
+        ].filter(Boolean).join(" e ");
+        renderWhatsappConnection({
+          state: "error",
+          title: "Configuração incompleta",
+          detail: `Informe ${missing} para ativar os envios desta empresa.`,
+        });
+      }
+
+      return { tokenConfigured, phoneConfigured };
+    }
+
+    async function verifyWhatsappConnection({ quiet = false } = {}) {
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) throw new Error("Empresa ID inválido");
+
+      btnVerifyWhatsapp.disabled = true;
+      if (!quiet) setSettingsFeedback("Testando conexão com a Meta...");
+
+      try {
+        const result = await apiPost(apiUrl(`empresas/${empresaId}/whatsapp/verify`));
+        renderWhatsappConnection({
+          state: "ready",
+          title: "Conexão validada",
+          detail: [result.verified_name, result.display_phone_number].filter(Boolean).join(" · ") ||
+            "A Graph API aceitou as credenciais.",
+        });
+        setSettingsFeedback("Credenciais válidas e prontas para envio.", "success");
+        return result;
+      } catch (error) {
+        renderWhatsappConnection({
+          state: "error",
+          title: "Falha na conexão",
+          detail: error.message,
+        });
+        setSettingsFeedback(error.message, "error");
+        throw error;
+      } finally {
+        btnVerifyWhatsapp.disabled = false;
+      }
+    }
+
+    async function loadWhatsappSettings() {
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) throw new Error("Empresa ID inválido");
+
+      setSettingsFeedback("Carregando configuração...");
+      const [empresa, onboarding] = await Promise.all([
+        apiGet(apiUrl(`empresas/${empresaId}`)),
+        apiGet(apiUrl(`empresas/${empresaId}/onboarding`)),
+      ]);
+      const state = renderWhatsappSettings(empresa, onboarding);
+      setSettingsFeedback("");
+
+      if (state.tokenConfigured && state.phoneConfigured) {
+        await verifyWhatsappConnection({ quiet: true }).catch(() => {
+          // O status e o erro já foram renderizados no diálogo.
+        });
+      }
+    }
+
+    async function openWhatsappSettings() {
+      setError("");
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) throw new Error("Empresa ID inválido");
+      if (!String(apiKeyInput.value || "").trim()) throw new Error("Informe a API Key");
+
+      localStorage.setItem("ADMIN_API_KEY", String(apiKeyInput.value || ""));
+      localStorage.setItem("EMPRESA_ID", String(empresaId));
+      whatsappSettingsDialog.showModal();
+      try {
+        await loadWhatsappSettings();
+      } catch (error) {
+        setSettingsFeedback(error.message, "error");
+        renderWhatsappConnection({
+          state: "error",
+          title: "Não foi possível carregar",
+          detail: error.message,
+        });
+      }
+    }
+
+    async function saveWhatsappSettings(event) {
+      event.preventDefault();
+      const empresaId = Number(empresaIdInput.value || 0);
+      const phoneNumberId = String(settingsPhoneIdEl.value || "").trim();
+      const token = String(settingsTokenEl.value || "").trim();
+
+      if (!/^\d+$/.test(phoneNumberId)) {
+        setSettingsFeedback("O Phone Number ID deve conter apenas números.", "error");
+        settingsPhoneIdEl.focus();
+        return;
+      }
+      if (settingsTokenEl.required && !token) {
+        setSettingsFeedback("Informe o token de acesso da Meta.", "error");
+        settingsTokenEl.focus();
+        return;
+      }
+
+      btnSaveWhatsapp.disabled = true;
+      btnVerifyWhatsapp.disabled = true;
+      setSettingsFeedback("Validando na Meta antes de salvar...");
+
+      try {
+        const payload = { phone_number_id: phoneNumberId, validate: true };
+        if (token) payload.whatsapp_token = token;
+
+        const result = await apiPut(apiUrl(`empresas/${empresaId}/whatsapp`), payload);
+        settingsTokenEl.value = "";
+        renderWhatsappSettings(result.empresa, {
+          public: { webhookCallbackUrl: settingsWebhookUrlEl.textContent },
+          meta: { verifyTokenConfigured: !settingsVerifyTokenStatusEl.textContent.includes("ausente") },
+        });
+        renderWhatsappConnection({
+          state: "ready",
+          title: "Conexão validada",
+          detail: [result.verified?.verified_name, result.verified?.display_phone_number]
+            .filter(Boolean).join(" · ") || "Credenciais salvas e aceitas pela Graph API.",
+        });
+        setSettingsFeedback("Configuração salva com segurança no banco.", "success");
+      } catch (error) {
+        renderWhatsappConnection({
+          state: "error",
+          title: "Credenciais não salvas",
+          detail: error.message,
+        });
+        setSettingsFeedback(error.message, "error");
+      } finally {
+        btnSaveWhatsapp.disabled = false;
+        btnVerifyWhatsapp.disabled = false;
       }
     }
 
@@ -1533,6 +1966,21 @@
 
     btnSend.addEventListener("click", send);
     btnRead.addEventListener("click", markRead);
+    btnWhatsappSettings.addEventListener("click", () => {
+      openWhatsappSettings().catch((error) => {
+        setError(error.message);
+      });
+    });
+    btnCloseWhatsappSettings.addEventListener("click", () => whatsappSettingsDialog.close());
+    whatsappSettingsForm.addEventListener("submit", saveWhatsappSettings);
+    btnVerifyWhatsapp.addEventListener("click", () => {
+      verifyWhatsappConnection().catch(() => {
+        // O diálogo já apresenta o erro detalhado.
+      });
+    });
+    whatsappSettingsDialog.addEventListener("click", (event) => {
+      if (event.target === whatsappSettingsDialog) whatsappSettingsDialog.close();
+    });
     textEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") send();
     });

@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const Conversa = require("../models/Conversa");
 const Contato = require("../models/Contato");
 const Empresa = require("../models/Empresa");
@@ -220,10 +221,19 @@ exports.enviarManual = async (req, res, next) => {
       return res.status(400).json({ error: "Telefone do contato inválido" });
     }
 
+    const requestedCommandId = String(
+      req.get?.("Idempotency-Key") || req.body?.command_id || "",
+    ).trim();
+    if (requestedCommandId.length > 200) {
+      return res.status(400).json({ error: "Idempotency-Key muito longa" });
+    }
+    const commandId = requestedCommandId || crypto.randomUUID();
+
     const queued = await enqueueOutgoingTextMessage({
       empresa,
       empresaId,
       contato,
+      commandId,
       responseText: messageText,
       originalNumber: to,
       useEnvWhatsApp: false,
@@ -243,10 +253,12 @@ exports.enviarManual = async (req, res, next) => {
       },
     );
 
-    res.status(201).json({
+    res.status(queued?.duplicate ? 200 : 201).json({
       mensagem: queued?.mensagemSaida || null,
       outbox: queued?.outbox || null,
       contato: contatoAtualizado || contato,
+      command_id: commandId,
+      duplicate: Boolean(queued?.duplicate),
     });
   } catch (err) {
     next(err);

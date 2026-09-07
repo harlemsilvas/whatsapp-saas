@@ -97,7 +97,10 @@ exports.receberMensagem = async (req, res, next) => {
         });
       }
 
-      await messageService.processarEvento(event);
+      await messageService.processarEvento({
+        ...event,
+        webhookEventId: persisted.id,
+      });
       await WebhookEvent.markProcessed(
         persisted.event_key,
         claimed.lease_token || null,

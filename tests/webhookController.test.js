@@ -6,6 +6,7 @@ describe("webhookController.receberMensagem", () => {
   test("nao registra preview do texto recebido no log", async () => {
     const processarEvento = jest.fn(async () => {});
     const createReceived = jest.fn(async () => ({
+      id: 101,
       event_key: "message::wamid.TEST",
       event_kind: "message",
       status: "received",
@@ -68,6 +69,9 @@ describe("webhookController.receberMensagem", () => {
       leaseSeconds: 60,
     });
     expect(processarEvento).toHaveBeenCalledTimes(1);
+    expect(processarEvento).toHaveBeenCalledWith(
+      expect.objectContaining({ webhookEventId: 101 }),
+    );
     expect(markProcessed).toHaveBeenCalledWith("message::wamid.TEST", "lease-1");
     expect(info).toHaveBeenCalledWith(
       "Webhook mensagem recebida",
@@ -90,18 +94,21 @@ describe("webhookController.receberMensagem", () => {
     const createReceived = jest
       .fn()
       .mockResolvedValueOnce({
+        id: 201,
         event_key: "message:1",
         event_kind: "message",
         status: "received",
         inserted: true,
       })
       .mockResolvedValueOnce({
+        id: 202,
         event_key: "message:2",
         event_kind: "message",
         status: "received",
         inserted: true,
       })
       .mockResolvedValueOnce({
+        id: 203,
         event_key: "status:1",
         event_kind: "status",
         status: "received",

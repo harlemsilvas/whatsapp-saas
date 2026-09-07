@@ -36,22 +36,26 @@ function buildDedupKey({
   channel = "whatsapp",
   messageType = "text",
   content,
+  webhookEventId = null,
+  commandId = null,
 }) {
+  const originType = webhookEventId ? "webhook" : commandId ? "command" : null;
+  const originId = webhookEventId || commandId || null;
   const hash = crypto
     .createHash("sha256")
     .update(
       JSON.stringify({
         empresaId,
-        contatoId,
-        to,
         channel,
         messageType,
-        content,
+        ...(originType
+          ? { originType, originId: String(originId) }
+          : { contatoId, to, content }),
       }),
     )
     .digest("hex");
 
-  return `${channel}:${empresaId}:${contatoId || "none"}:${hash}`;
+  return `${channel}:${empresaId}:${originType || "legacy"}:${hash}`;
 }
 
 exports.createPending = async (
@@ -65,6 +69,7 @@ exports.createPending = async (
     channel = "whatsapp",
     messageType = "text",
     options = {},
+    commandId = null,
   },
   client = db,
 ) => {
@@ -75,6 +80,8 @@ exports.createPending = async (
     channel,
     messageType,
     content,
+    webhookEventId,
+    commandId,
   });
 
   const result = await client.query(
@@ -94,8 +101,8 @@ exports.createPending = async (
      )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', NOW())
      ON CONFLICT (dedup_key)
-     DO NOTHING
-     RETURNING *`,
+     DO UPDATE SET dedup_key = EXCLUDED.dedup_key
+     RETURNING *, (xmax = 0) AS inserted`,
     [
       dedupKey,
       empresaId,
@@ -112,6 +119,19 @@ exports.createPending = async (
 
   return result.rows[0] || null;
 };
+
+exports.attachMensagem = async (outboxId, mensagemId, client = db) => {
+  const result = await client.query(
+    `UPDATE outbox_messages
+     SET mensagem_id = $2
+     WHERE id = $1 AND mensagem_id IS NULL
+     RETURNING *`,
+    [outboxId, mensagemId],
+  );
+  return result.rows[0] || null;
+};
+
+exports.buildDedupKey = buildDedupKey;
 
 exports.markProcessing = async (
   outboxId,

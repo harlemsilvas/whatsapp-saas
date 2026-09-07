@@ -19,6 +19,7 @@ async function enqueueOutgoingTextMessage({
   responseText,
   originalNumber,
   useEnvWhatsApp = false,
+  commandId = null,
 }) {
   let sendTo = originalNumber;
 
@@ -40,20 +41,13 @@ async function enqueueOutgoingTextMessage({
   try {
     await client.query("BEGIN");
 
-    const mensagemSaida = await Mensagem.create({
-      empresa_id: empresaId,
-      contato_id: contato.id,
-      direcao: "saida",
-      conteudo: responseText,
-      client,
-    });
-
     const outbox = await OutboxMessage.createPending(
       {
         empresaId,
         contatoId: contato.id,
-        mensagemId: mensagemSaida.id,
+        mensagemId: null,
         webhookEventId,
+        commandId,
         to: sendTo,
         content: responseText,
         options: {
@@ -65,8 +59,35 @@ async function enqueueOutgoingTextMessage({
       client,
     );
 
+    if (!outbox?.inserted) {
+      const mensagemSaida = outbox?.mensagem_id
+        ? await Mensagem.findById(empresaId, outbox.mensagem_id, client)
+        : null;
+      await client.query("COMMIT");
+      return { mensagemSaida, outbox, sendTo, duplicate: true };
+    }
+
+    const mensagemSaida = await Mensagem.create({
+      empresa_id: empresaId,
+      contato_id: contato.id,
+      direcao: "saida",
+      conteudo: responseText,
+      client,
+    });
+
+    const linkedOutbox = await OutboxMessage.attachMensagem(
+      outbox.id,
+      mensagemSaida.id,
+      client,
+    );
+
     await client.query("COMMIT");
-    return { mensagemSaida, outbox, sendTo };
+    return {
+      mensagemSaida,
+      outbox: linkedOutbox || outbox,
+      sendTo,
+      duplicate: false,
+    };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

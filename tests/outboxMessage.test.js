@@ -22,6 +22,31 @@ describe("OutboxMessage provider status reconciliation", () => {
     },
   );
 
+  test("gera chave pela origem e não pelo conteúdo da resposta", () => {
+    jest.doMock("../src/config/database", () => ({}));
+    const OutboxMessage = require("../src/models/OutboxMessage");
+    const base = {
+      empresaId: 1,
+      contatoId: 10,
+      to: "5511999999999",
+      content: "Mesmo texto",
+      webhookEventId: 77,
+    };
+
+    const first = OutboxMessage.buildDedupKey(base);
+    const repeated = OutboxMessage.buildDedupKey({
+      ...base,
+      content: "Texto recalculado",
+    });
+    const anotherEvent = OutboxMessage.buildDedupKey({
+      ...base,
+      webhookEventId: 78,
+    });
+
+    expect(repeated).toBe(first);
+    expect(anotherEvent).not.toBe(first);
+  });
+
   test("atualiza outbox e mensagem associada na mesma transação", async () => {
     const current = {
       id: 9,

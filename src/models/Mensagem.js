@@ -17,8 +17,8 @@ exports.listByEmpresaId = async (
   return result.rows;
 };
 
-exports.findById = async (empresaId, mensagemId) => {
-  const result = await db.query(
+exports.findById = async (empresaId, mensagemId, client = db) => {
+  const result = await client.query(
     `SELECT *
      FROM mensagens
      WHERE empresa_id = $1 AND id = $2`,

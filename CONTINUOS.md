@@ -63,13 +63,51 @@ Concluído nesta retomada:
 - estados `sent`, `delivered`, `read` e `failed` visíveis na conversa e outbox;
 - proteção contra regressão quando webhooks de status chegam fora de ordem;
 - isolamento da reconciliação por `phone_number_id` em produção;
-- testes automatizados para avanço, regressão e isolamento de status.
+- testes automatizados para avanço, regressão e isolamento de status;
+- chave idempotente da outbox baseada no `webhook_event_id` ou comando manual;
+- propagação do ID persistido do webhook até a criação da outbox;
+- suporte a `Idempotency-Key` nos envios manuais do admin;
+- prevenção de mensagens de saída órfãs quando uma origem é repetida;
+- configuração de `phone_number_id` e token por empresa diretamente no painel;
+- validação das credenciais na Graph API antes da persistência;
+- token armazenado permanece oculto em todas as respostas administrativas.
+
+#### Encerramento de 7 de setembro de 2026
+
+- suíte local aprovada com 13 suítes e 50 testes;
+- script JavaScript do painel validado sem erro de sintaxe;
+- `git diff --check` aprovado;
+- deploy desta versão executado de forma controlada pelo workflow do GitHub;
+- nenhuma migração nova de banco é necessária para este pacote;
+- alterações locais de `.venv` e `package-lock.json` não pertencem ao pacote e
+  devem continuar fora dos commits.
+
+Ordem da próxima retomada:
+
+1. confirmar o healthcheck e os dois processos PM2 na VPS;
+2. trocar a chave administrativa curta por uma chave forte;
+3. ajustar `APP_PUBLIC_BASE_URL=https://bot.hrmmotos.com.br` e reiniciar o
+   ecosystem com `--update-env`;
+4. abrir `Configurar WhatsApp`, informar o `Phone Number ID` da Meta e um token
+   de longa duração para a empresa `1`;
+5. confirmar que o painel exibe `Conexão validada`;
+6. revisar os logs da OpenAI, pois as mensagens reais estão usando fallback;
+7. executar o teste real descrito em `docs/guia-uso-operacao.md` e conferir a
+   sequência entrada, resposta, outbox, `sent`, `delivered` e `read`.
 
 Próximo foco:
 
-- corrigir a chave idempotente da outbox para usar o evento ou comando de origem;
 - validar correlação completa em um teste real na VPS;
-- exercitar duplicidade, falha transitória e recuperação pelo worker.
+- exercitar duplicidade, falha transitória e recuperação pelo worker;
+- tornar a assinatura da Meta obrigatória em produção e testar rejeições.
+
+Diagnostico operacional e roteiro de teste:
+
+- [docs/guia-uso-operacao.md](docs/guia-uso-operacao.md)
+- o endpoint publico atual e `https://bot.hrmmotos.com.br`;
+- a VPS ainda deve substituir `APP_PUBLIC_BASE_URL=https://hrmmotos.com.br/wppsaas`;
+- a empresa `1` deve receber e validar `phone_number_id` e token no banco;
+- a IA deve ser revisada porque as mensagens reais estao usando o fallback generico.
 
 ### Etapa 2 - Preparar o contrato de integração
 

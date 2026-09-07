@@ -24,4 +24,7 @@ yarn-error.log*
 # Build
 dist/
 build/
-docs/
+# A documentacao historica continua ignorada, mas o guia operacional atual e
+# versionado para acompanhar cada deploy.
+docs/*
+!docs/guia-uso-operacao.md
