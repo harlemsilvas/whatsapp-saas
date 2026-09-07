@@ -122,6 +122,7 @@ describe("messageService.processar", () => {
           changes: [
             {
               value: {
+                metadata: { phone_number_id: "PHONE_ID" },
                 statuses: [{ status: "delivered", id: "wamid.STATUS" }],
               },
             },
@@ -141,7 +142,31 @@ describe("messageService.processar", () => {
         id: "wamid.STATUS",
         status: "delivered",
       }),
+      { empresaId: 1 },
     );
+  });
+
+  test("não reconcilia status de phone_number_id desconhecido", async () => {
+    const { messageService, mocks } = loadServiceWithMocks({ empresa: null });
+
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "UNKNOWN_PHONE_ID" },
+                statuses: [{ status: "read", id: "wamid.UNKNOWN" }],
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    await messageService.processar(payload);
+
+    expect(mocks.OutboxMessage.markProviderStatus).not.toHaveBeenCalled();
   });
 
   test("processa todas as mensagens e statuses do payload em lote", async () => {

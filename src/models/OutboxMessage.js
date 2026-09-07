@@ -3,6 +3,31 @@ const db = require("../config/database");
 
 const DEFAULT_LEASE_SECONDS = 60;
 const DEFAULT_BACKOFF_SECONDS = 30;
+const PROVIDER_STATUS_RANK = {
+  sent: 1,
+  delivered: 2,
+  read: 3,
+};
+
+function normalizeProviderStatus(status) {
+  return String(status || "").trim().toLowerCase();
+}
+
+function shouldApplyProviderStatus(currentStatus, incomingStatus) {
+  const current = normalizeProviderStatus(currentStatus);
+  const incoming = normalizeProviderStatus(incomingStatus);
+
+  if (!incoming) return false;
+  if (!current || current === incoming) return true;
+  if (current === "read" || current === "failed") return false;
+  if (incoming === "failed") return !["delivered", "read"].includes(current);
+
+  const currentRank = PROVIDER_STATUS_RANK[current];
+  const incomingRank = PROVIDER_STATUS_RANK[incoming];
+  if (!incomingRank) return false;
+  if (!currentRank) return true;
+  return incomingRank >= currentRank;
+}
 
 function buildDedupKey({
   empresaId,
@@ -121,21 +146,42 @@ exports.markProcessing = async (
 };
 
 exports.markSent = async (outboxId, graphMessageId, leaseToken = null) => {
-  const result = await db.query(
-    `UPDATE outbox_messages
-     SET
-       status = 'sent',
-       provider_message_id = $2,
-       lease_token = NULL,
-       lease_expires_at = NULL,
-       last_error = NULL,
-       processed_at = NOW()
-     WHERE id = $1
-       AND ($3::varchar IS NULL OR lease_token = $3)
-     RETURNING *`,
-    [outboxId, graphMessageId || null, leaseToken],
-  );
-  return result.rows[0];
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `UPDATE outbox_messages
+       SET
+         status = 'sent',
+         provider_message_id = $2,
+         lease_token = NULL,
+         lease_expires_at = NULL,
+         last_error = NULL,
+         processed_at = NOW()
+       WHERE id = $1
+         AND ($3::varchar IS NULL OR lease_token = $3)
+       RETURNING *`,
+      [outboxId, graphMessageId || null, leaseToken],
+    );
+
+    const record = result.rows[0] || null;
+    if (record?.mensagem_id && graphMessageId) {
+      await client.query(
+        `UPDATE mensagens
+         SET wa_message_id = COALESCE(wa_message_id, $3)
+         WHERE id = $1 AND empresa_id = $2`,
+        [record.mensagem_id, record.empresa_id, graphMessageId],
+      );
+    }
+
+    await client.query("COMMIT");
+    return record;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 exports.markFailed = async (
@@ -250,20 +296,83 @@ exports.summaryByEmpresaId = async (empresaId) => {
   };
 };
 
-exports.markProviderStatus = async (providerMessageId, status, payload = null) => {
-  const result = await db.query(
-    `UPDATE outbox_messages
-     SET
-       provider_status = $2,
-       provider_status_payload = $3::jsonb,
-       provider_status_at = NOW()
-     WHERE provider_message_id = $1
-     RETURNING *`,
-    [
-      providerMessageId,
-      status ? String(status).trim() : null,
-      payload ? JSON.stringify(payload) : null,
-    ],
-  );
-  return result.rows[0] || null;
+exports.markProviderStatus = async (
+  providerMessageId,
+  status,
+  payload = null,
+  { empresaId = null } = {},
+) => {
+  const normalizedStatus = normalizeProviderStatus(status);
+  if (!providerMessageId || !normalizedStatus) return null;
+
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const currentResult = await client.query(
+      `SELECT *
+       FROM outbox_messages
+       WHERE provider_message_id = $1
+         AND ($2::int IS NULL OR empresa_id = $2)
+       LIMIT 1
+       FOR UPDATE`,
+      [providerMessageId, empresaId],
+    );
+    const current = currentResult.rows[0] || null;
+
+    if (!current) {
+      await client.query("COMMIT");
+      return null;
+    }
+
+    if (!shouldApplyProviderStatus(current.provider_status, normalizedStatus)) {
+      await client.query("COMMIT");
+      return {
+        ...current,
+        reconciliation_applied: false,
+        incoming_provider_status: normalizedStatus,
+      };
+    }
+
+    const serializedPayload = payload ? JSON.stringify(payload) : null;
+    const result = await client.query(
+      `UPDATE outbox_messages
+       SET
+         provider_status = $2,
+         provider_status_payload = $3::jsonb,
+         provider_status_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [current.id, normalizedStatus, serializedPayload],
+    );
+    const updated = result.rows[0];
+
+    if (updated?.mensagem_id) {
+      await client.query(
+        `UPDATE mensagens
+         SET
+           wa_message_id = COALESCE(wa_message_id, $3),
+           provider_status = $4,
+           provider_status_payload = $5::jsonb,
+           provider_status_at = NOW()
+         WHERE id = $1 AND empresa_id = $2`,
+        [
+          updated.mensagem_id,
+          updated.empresa_id,
+          providerMessageId,
+          normalizedStatus,
+          serializedPayload,
+        ],
+      );
+    }
+
+    await client.query("COMMIT");
+    return { ...updated, reconciliation_applied: true };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 };
+
+exports.shouldApplyProviderStatus = shouldApplyProviderStatus;

@@ -262,13 +262,42 @@ async function processarEvento(event) {
 
   // Eventos de status (delivered/read/etc) não exigem resposta do bot.
   if (!msg && status) {
+    let statusEmpresaId = null;
+    if (metaPhoneNumberId) {
+      const statusEmpresa = await Empresa.findByPhoneNumberId(
+        String(metaPhoneNumberId),
+      );
+      if (!statusEmpresa) {
+        logger.warn("Status não reconciliado: phone_number_id desconhecido", {
+          phone_number_id: metaPhoneNumberId,
+          providerMessageId: status?.id || null,
+          providerStatus: status?.status || null,
+        });
+        return;
+      }
+      statusEmpresaId = statusEmpresa.id;
+    } else if (process.env.NODE_ENV === "production") {
+      logger.warn("Status não reconciliado: metadata ausente", {
+        providerMessageId: status?.id || null,
+        providerStatus: status?.status || null,
+      });
+      return;
+    }
+
     const reconciled = status?.id
-      ? await OutboxMessage.markProviderStatus(String(status.id).trim(), status.status, status)
+      ? await OutboxMessage.markProviderStatus(
+          String(status.id).trim(),
+          status.status,
+          status,
+          { empresaId: statusEmpresaId },
+        )
       : null;
-    logger.info("Evento de status ignorado", {
-      status: status.status,
-      id: status.id,
+    logger.info("Evento de status processado", {
+      providerStatus: status.status,
+      providerMessageId: status.id,
+      empresaId: statusEmpresaId,
       reconciledOutboxId: reconciled?.id || null,
+      reconciliationApplied: reconciled?.reconciliation_applied ?? null,
     });
     return;
   }

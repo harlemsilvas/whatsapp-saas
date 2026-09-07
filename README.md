@@ -62,6 +62,16 @@ O workflow em [deploy.yml](/home/harlem/projetos/whatsapp-saas/.github/workflows
 - roda testes em `push` e `pull_request` para `main`
 - só executa deploy se o job de testes passar
 - faz deploy apenas em eventos de `push` na branch `main`
+- serializa deploys para evitar duas atualizações simultâneas
+- executa as migrations idempotentes antes do restart
+- mantém API e worker pelo `ecosystem.config.js`
+- valida o healthcheck local e restaura o commit anterior se o deploy falhar
+
+Secrets obrigatórios no GitHub:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_SSH_KEY`
 
 ## Itens obrigatórios na Meta (Políticas/Termos/Exclusão)
 
@@ -267,9 +277,12 @@ Para persistir mensagens de saída antes do envio à Graph API, aplique:
 
 ```bash
 npm run db:migrate:outbox
+npm run db:migrate:outbox:provider-status
+npm run db:migrate:message-provider-status
 ```
 
-Isso cria a tabela `outbox_messages`, usada para desacoplar o processamento do webhook do envio ao WhatsApp.
+Isso cria a tabela `outbox_messages` e habilita a correlação dos estados da Meta
+entre outbox e mensagens de saída.
 
 ### Reprocessar eventos com falha
 

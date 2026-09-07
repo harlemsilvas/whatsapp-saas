@@ -17,6 +17,7 @@
     "db:migrate:webhook-events:retry-lease": "node scripts/migrateWebhookEventRetryLease.js",
     "db:migrate:outbox": "node scripts/migrateOutboxMessages.js",
     "db:migrate:outbox:provider-status": "node scripts/migrateOutboxProviderStatus.js",
+    "db:migrate:message-provider-status": "node scripts/migrateMessageProviderStatus.js",
     "webhook:reprocess": "node scripts/reprocessWebhookEvents.js",
     "test": "jest"
   },

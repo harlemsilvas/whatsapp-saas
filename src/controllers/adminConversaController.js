@@ -438,6 +438,8 @@ exports.debugConversa = async (req, res, next) => {
               conteudo: lastInbound.conteudo,
               tipo: lastInbound.tipo,
               wa_message_id: lastInbound.wa_message_id || null,
+              provider_status: lastInbound.provider_status || null,
+              provider_status_at: lastInbound.provider_status_at || null,
               lida_em: lastInbound.lida_em || null,
               created_at: lastInbound.created_at,
             }
@@ -449,6 +451,8 @@ exports.debugConversa = async (req, res, next) => {
               conteudo: lastOutbound.conteudo,
               tipo: lastOutbound.tipo,
               wa_message_id: lastOutbound.wa_message_id || null,
+              provider_status: lastOutbound.provider_status || null,
+              provider_status_at: lastOutbound.provider_status_at || null,
               lida_em: lastOutbound.lida_em || null,
               created_at: lastOutbound.created_at,
             }
@@ -458,6 +462,8 @@ exports.debugConversa = async (req, res, next) => {
           direcao: m.direcao,
           tipo: m.tipo,
           wa_message_id: m.wa_message_id || null,
+          provider_status: m.provider_status || null,
+          provider_status_at: m.provider_status_at || null,
           lida_em: m.lida_em || null,
           created_at: m.created_at,
           conteudo: m.conteudo,

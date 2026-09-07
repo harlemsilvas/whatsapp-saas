@@ -1273,6 +1273,17 @@
         div.className = "msg " + (m.direcao === "entrada" ? "in" : "out");
         const when = m.created_at ? new Date(m.created_at).toLocaleString() : "";
         div.innerHTML = `<div>${escapeHtml(m.conteudo || "")}</div><div class="muted" style="margin-top:6px">${m.direcao} • ${when}</div>`;
+
+        if (m.direcao === "saida") {
+          const provider = describeProviderStatus(m.provider_status);
+          if (provider) {
+            const statusRow = document.createElement("div");
+            statusRow.className = "status-row";
+            statusRow.appendChild(renderStatusBadge(provider));
+            div.appendChild(statusRow);
+          }
+        }
+
         chatEl.appendChild(div);
       }
     }

@@ -39,6 +39,9 @@ CREATE TABLE mensagens (
   tipo VARCHAR(20) DEFAULT 'text',
   lida_em TIMESTAMP NULL,
   wa_message_id VARCHAR(128) NULL,
+  provider_status VARCHAR(30) NULL,
+  provider_status_payload JSONB NULL,
+  provider_status_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -46,6 +49,9 @@ CREATE TABLE mensagens (
 CREATE UNIQUE INDEX IF NOT EXISTS ux_mensagens_empresa_wa_message_id
   ON mensagens (empresa_id, wa_message_id)
   WHERE wa_message_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS ix_mensagens_empresa_provider_status
+  ON mensagens (empresa_id, provider_status, created_at DESC);
 
 -- Fluxos automatizados
 CREATE TABLE fluxos (
