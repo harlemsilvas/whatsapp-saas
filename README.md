@@ -204,7 +204,7 @@ No terminal do ngrok, pare com `Ctrl+C`.
 - [ ] Garantir assinatura correta no App da Meta: evento `messages` + URL fixa (sem depender de ngrok)
 - [ ] Deploy com HTTPS (Nginx + Certbot) e processo (PM2) + restart automático
 - [ ] Rate limit / hardening no webhook (evitar abuso, logs e métricas)
-- [ ] Multi-tenant completo: CRUD de credenciais por empresa + onboarding (phone_number_id/token)
+- [x] Credenciais WhatsApp e OpenAI isoladas por empresa, com onboarding no painel
 
 ## Admin (Empresas + Onboarding)
 
@@ -249,9 +249,15 @@ VPS, consulte [docs/guia-uso-operacao.md](docs/guia-uso-operacao.md).
 Painel atual: `https://bot.hrmmotos.com.br/api/admin/ui?key=SUA_ADMIN_API_KEY`.
 Nao registre a chave real no README ou em outros arquivos versionados.
 
-O botão `Configurar WhatsApp` salva `phone_number_id` e token por empresa,
+O botão `Configurações` salva `phone_number_id` e token por empresa,
 valida as credenciais na Graph API e nunca devolve o token armazenado ao
 navegador.
+
+Na seção `Inteligência artificial`, o mesmo painel permite cadastrar várias
+chaves OpenAI por empresa. As chaves são validadas antes da gravação,
+criptografadas com AES-256-GCM e exibidas apenas por impressão digital. A menor
+prioridade numérica é tentada primeiro; falhas de autenticação invalidam a
+chave e falhas transitórias ativam um cooldown antes do failover.
 
 ### Migração (não lidas)
 
@@ -289,6 +295,7 @@ Para persistir mensagens de saída antes do envio à Graph API, aplique:
 npm run db:migrate:outbox
 npm run db:migrate:outbox:provider-status
 npm run db:migrate:message-provider-status
+npm run db:migrate:ai-credentials
 ```
 
 Isso cria a tabela `outbox_messages` e habilita a correlação dos estados da Meta
@@ -348,7 +355,10 @@ O projeto tem um fallback de IA em `src/services/iaService.js`. Quando não exis
 
 ### Variáveis de ambiente
 
-- `OPENAI_API_KEY` (obrigatório para habilitar IA)
+- `CREDENTIALS_ENCRYPTION_KEY` (obrigatória para gravar/usar chaves do banco;
+  gere uma única vez com `openssl rand -base64 32` e preserve em backup seguro)
+- `AI_MAX_CREDENTIAL_ATTEMPTS` (opcional, padrão: `2`)
+- `OPENAI_API_KEY` (opcional; usada como último fallback após as chaves do banco)
 - `OPENAI_MODEL` (opcional, padrão: `gpt-4o-mini`)
 - `OPENAI_BASE_URL` (opcional, padrão: `https://api.openai.com/v1`)
 - `OPENAI_MAX_OUTPUT_TOKENS` (opcional, padrão: `220`)
@@ -376,8 +386,11 @@ Exemplo no `.env`:
 ```bash
 OPENAI_API_KEY=SEU_TOKEN_DA_OPENAI
 OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_STYLE=responses
 OPENAI_MAX_OUTPUT_TOKENS=220
 OPENAI_TEMPERATURE=0.4
+CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
+AI_MAX_CREDENTIAL_ATTEMPTS=2
 ```
 
 ### API de conversas (protegida por `x-api-key`)

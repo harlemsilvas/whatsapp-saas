@@ -56,6 +56,7 @@ npm run db:migrate:webhook-events:retry-lease
 npm run db:migrate:outbox
 npm run db:migrate:outbox:provider-status
 npm run db:migrate:message-provider-status
+npm run db:migrate:ai-credentials
 
 command -v pm2 >/dev/null 2>&1 || { echo "pm2 nao encontrado no PATH"; exit 1; }
 mkdir -p /home/whatsapp/logs

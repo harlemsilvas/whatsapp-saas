@@ -73,7 +73,8 @@
       letter-spacing: 0.03em;
     }
 
-    input {
+    input,
+    select {
       padding: 8px;
       border: 1px solid var(--border);
       border-radius: 6px;
@@ -140,6 +141,7 @@
 
     .settings-shell {
       padding: 22px;
+      max-height: calc(100vh - 84px);
       overflow: auto;
     }
 
@@ -223,7 +225,7 @@
       background: rgba(13, 26, 37, 0.72);
     }
 
-    .settings-meta code {
+    .settings-meta > code {
       display: block;
       margin-top: 5px;
       padding: 8px;
@@ -253,6 +255,63 @@
 
     .settings-feedback.error {
       color: var(--danger);
+    }
+
+    .ai-settings {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-strong);
+    }
+
+    .ai-settings h3 {
+      margin: 0 0 5px;
+      font-size: 18px;
+    }
+
+    .ai-credential-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .ai-credential-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(7, 16, 24, 0.66);
+    }
+
+    .ai-credential-card.invalid {
+      border-color: rgba(255, 135, 149, 0.55);
+    }
+
+    .ai-credential-card.cooldown {
+      border-color: rgba(241, 202, 99, 0.55);
+    }
+
+    .ai-credential-title {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 5px;
+    }
+
+    .ai-credential-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .danger-button {
+      color: #ffd4da;
+      border-color: rgba(255, 135, 149, 0.48);
+      background: rgba(88, 26, 37, 0.62);
     }
 
     .list {
@@ -569,6 +628,14 @@
       .settings-field.full {
         grid-column: auto;
       }
+
+      .ai-credential-card {
+        grid-template-columns: 1fr;
+      }
+
+      .ai-credential-actions {
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
@@ -588,7 +655,7 @@
         <button id="btnLoad">Carregar</button>
       </div>
       <div style="padding-top: 18px">
-        <button id="btnWhatsappSettings" class="button-secondary">Configurar WhatsApp</button>
+        <button id="btnWhatsappSettings" class="button-secondary">Configurações</button>
       </div>
       <div id="status" class="muted"></div>
     </div>
@@ -641,7 +708,7 @@
     <div class="settings-shell">
       <div class="settings-header">
         <div>
-          <h2 id="whatsappSettingsTitle">Configurações do WhatsApp</h2>
+          <h2 id="whatsappSettingsTitle">Configurações da empresa</h2>
           <div id="settingsCompany" class="muted">Carregando empresa...</div>
         </div>
         <button id="btnCloseWhatsappSettings" class="button-secondary" type="button">Fechar</button>
@@ -691,6 +758,52 @@
           <button id="btnSaveWhatsapp" class="button-success" type="submit">Salvar e validar</button>
         </div>
       </form>
+
+      <section class="ai-settings" aria-labelledby="aiSettingsTitle">
+        <h3 id="aiSettingsTitle">Inteligência artificial</h3>
+        <div class="settings-help">
+          Chaves criptografadas por empresa, usadas por prioridade. O valor salvo nunca volta ao navegador.
+        </div>
+        <div id="aiEnvFallback" class="settings-help" style="margin-top: 6px"></div>
+
+        <form id="aiCredentialForm" style="margin-top: 16px">
+          <div class="settings-grid">
+            <div class="settings-field">
+              <label for="aiCredentialLabel">Nome da chave</label>
+              <input id="aiCredentialLabel" type="text" maxlength="100" placeholder="Ex.: Produção principal" required />
+            </div>
+            <div class="settings-field">
+              <label for="aiCredentialKey">Nova API key</label>
+              <input id="aiCredentialKey" type="password" autocomplete="new-password" placeholder="sk-..." required />
+            </div>
+            <div class="settings-field">
+              <label for="aiCredentialModel">Modelo</label>
+              <input id="aiCredentialModel" type="text" value="gpt-4o-mini" required />
+            </div>
+            <div class="settings-field">
+              <label for="aiCredentialStyle">API style</label>
+              <select id="aiCredentialStyle">
+                <option value="responses">Responses API</option>
+                <option value="chat">Chat Completions</option>
+              </select>
+            </div>
+            <div class="settings-field">
+              <label for="aiCredentialPriority">Prioridade</label>
+              <input id="aiCredentialPriority" type="number" min="1" max="10000" value="100" required />
+              <div class="settings-help">Menor número é tentado primeiro.</div>
+            </div>
+          </div>
+          <div id="aiCredentialFeedback" class="settings-feedback" role="status" aria-live="polite"></div>
+          <div class="settings-actions">
+            <button id="btnRefreshAiCredentials" class="button-secondary" type="button">Atualizar lista</button>
+            <button id="btnAddAiCredential" class="button-success" type="submit">Validar e adicionar</button>
+          </div>
+        </form>
+
+        <div id="aiCredentialsList" class="ai-credential-list">
+          <div class="muted">Carregando credenciais...</div>
+        </div>
+      </section>
     </div>
   </dialog>
 
@@ -728,6 +841,17 @@
     const settingsFeedbackEl = $("settingsFeedback");
     const btnVerifyWhatsapp = $("btnVerifyWhatsapp");
     const btnSaveWhatsapp = $("btnSaveWhatsapp");
+    const aiCredentialForm = $("aiCredentialForm");
+    const aiCredentialLabelEl = $("aiCredentialLabel");
+    const aiCredentialKeyEl = $("aiCredentialKey");
+    const aiCredentialModelEl = $("aiCredentialModel");
+    const aiCredentialStyleEl = $("aiCredentialStyle");
+    const aiCredentialPriorityEl = $("aiCredentialPriority");
+    const aiCredentialFeedbackEl = $("aiCredentialFeedback");
+    const aiCredentialsListEl = $("aiCredentialsList");
+    const aiEnvFallbackEl = $("aiEnvFallback");
+    const btnAddAiCredential = $("btnAddAiCredential");
+    const btnRefreshAiCredentials = $("btnRefreshAiCredentials");
 
     let currentContatoId = null;
     let currentContato = null;
@@ -753,8 +877,8 @@
     }
 
     function apiError(data, status) {
-      const graphMessage = data?.graph?.message || data?.graph?.error?.message;
-      return new Error(graphMessage || data?.error || data?.message || `HTTP ${status}`);
+      const detail = data?.graph?.message || data?.graph?.error?.message || data?.provider?.message;
+      return new Error(detail || data?.error || data?.message || `HTTP ${status}`);
     }
 
     function headers() {
@@ -791,6 +915,15 @@
         throw apiError(data, res.status);
       }
       return res.json();
+    }
+
+    async function apiDelete(path) {
+      const res = await fetch(path, { method: "DELETE", headers: headers() });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw apiError(data, res.status);
+      }
+      return true;
     }
 
     // Resolve URLs do painel (funciona local e em subpasta /wppsaas/api/admin/ui)
@@ -1847,6 +1980,138 @@
       }
     }
 
+    function setAiFeedback(message, kind = "") {
+      aiCredentialFeedbackEl.textContent = message || "";
+      aiCredentialFeedbackEl.className = `settings-feedback ${kind}`.trim();
+    }
+
+    function aiStatusLabel(item) {
+      if (!item.enabled) return "Desativada";
+      return {
+        valid: "Válida",
+        invalid: "Inválida",
+        cooldown: "Em espera",
+        untested: "Não testada",
+      }[item.status] || item.status;
+    }
+
+    function renderAiCredentials(payload) {
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const fallback = payload?.env_fallback || {};
+      aiEnvFallbackEl.textContent = fallback.configured
+        ? `Fallback do .env ativo: ${fallback.model} · ${fallback.api_style}. Ele será tentado depois das chaves do banco.`
+        : "Fallback do .env não configurado. Somente as chaves desta empresa serão usadas.";
+
+      if (!items.length) {
+        aiCredentialsListEl.innerHTML = '<div class="muted">Nenhuma chave cadastrada no banco.</div>';
+        return;
+      }
+
+      aiCredentialsListEl.innerHTML = items.map((item) => {
+        const checkedAt = item.last_checked_at
+          ? `Último teste: ${new Date(item.last_checked_at).toLocaleString()}`
+          : "Ainda não testada";
+        const cooldown = item.cooldown_until
+          ? ` · nova tentativa após ${new Date(item.cooldown_until).toLocaleString()}`
+          : "";
+        const error = item.last_error
+          ? `<div class="error" style="margin-top:6px">${escapeHtml(item.last_error)}</div>`
+          : "";
+        return `
+          <article class="ai-credential-card ${escapeHtml(item.status || "")}" data-credential-id="${item.id}">
+            <div>
+              <div class="ai-credential-title">
+                <strong>${escapeHtml(item.label)}</strong>
+                <span class="badge">${escapeHtml(aiStatusLabel(item))}</span>
+                <span class="muted">••••${escapeHtml(item.key_fingerprint)}</span>
+              </div>
+              <div class="muted">${escapeHtml(item.model)} · ${escapeHtml(item.api_style)} · falhas: ${Number(item.failure_count) || 0}</div>
+              <div class="muted" style="margin-top:4px">${escapeHtml(checkedAt + cooldown)}</div>
+              ${error}
+            </div>
+            <div class="ai-credential-actions">
+              <label class="muted">Prioridade
+                <input data-role="priority" type="number" min="1" max="10000" value="${Number(item.priority) || 100}" style="width:84px" />
+              </label>
+              <button type="button" class="button-secondary" data-action="save-priority">Salvar</button>
+              <button type="button" class="button-secondary" data-action="verify">Testar</button>
+              <button type="button" class="button-secondary" data-action="toggle" data-enabled="${item.enabled}">${item.enabled ? "Desativar" : "Ativar"}</button>
+              <button type="button" class="danger-button" data-action="delete">Excluir</button>
+            </div>
+          </article>`;
+      }).join("");
+    }
+
+    async function loadAiCredentials() {
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!empresaId) throw new Error("Empresa ID inválido");
+      aiCredentialsListEl.innerHTML = '<div class="muted">Carregando credenciais...</div>';
+      const payload = await apiGet(apiUrl(`empresas/${empresaId}/ai/credentials`));
+      renderAiCredentials(payload);
+      return payload;
+    }
+
+    async function createAiCredential(event) {
+      event.preventDefault();
+      const empresaId = Number(empresaIdInput.value || 0);
+      const apiKey = String(aiCredentialKeyEl.value || "").trim();
+      if (!apiKey) {
+        setAiFeedback("Informe a nova API key.", "error");
+        return;
+      }
+
+      btnAddAiCredential.disabled = true;
+      setAiFeedback("Validando a chave na OpenAI antes de armazenar...");
+      try {
+        await apiPost(apiUrl(`empresas/${empresaId}/ai/credentials`), {
+          label: String(aiCredentialLabelEl.value || "").trim(),
+          api_key: apiKey,
+          model: String(aiCredentialModelEl.value || "").trim(),
+          api_style: aiCredentialStyleEl.value,
+          priority: Number(aiCredentialPriorityEl.value),
+        });
+        aiCredentialKeyEl.value = "";
+        aiCredentialLabelEl.value = "";
+        await loadAiCredentials();
+        setAiFeedback("Chave validada e armazenada com criptografia.", "success");
+      } catch (error) {
+        setAiFeedback(error.message, "error");
+      } finally {
+        btnAddAiCredential.disabled = false;
+      }
+    }
+
+    async function handleAiCredentialAction(event) {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const card = button.closest("[data-credential-id]");
+      const credentialId = Number(card?.dataset.credentialId || 0);
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!credentialId || !empresaId) return;
+
+      const action = button.dataset.action;
+      if (action === "delete" && !window.confirm("Excluir esta chave de IA? Esta ação não pode ser desfeita.")) return;
+      button.disabled = true;
+      setAiFeedback(action === "verify" ? "Testando chave na OpenAI..." : "Atualizando credencial...");
+      try {
+        const basePath = `empresas/${empresaId}/ai/credentials/${credentialId}`;
+        if (action === "verify") await apiPost(apiUrl(`${basePath}/verify`));
+        if (action === "toggle") await apiPut(apiUrl(basePath), { enabled: button.dataset.enabled !== "true" });
+        if (action === "save-priority") {
+          const priority = Number(card.querySelector('[data-role="priority"]')?.value);
+          await apiPut(apiUrl(basePath), { priority });
+        }
+        if (action === "delete") await apiDelete(apiUrl(basePath));
+        await loadAiCredentials();
+        setAiFeedback(action === "verify" ? "Chave válida e disponível." : "Credencial atualizada.", "success");
+      } catch (error) {
+        setAiFeedback(error.message, "error");
+        await loadAiCredentials().catch(() => {});
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function openWhatsappSettings() {
       setError("");
       const empresaId = Number(empresaIdInput.value || 0);
@@ -1856,16 +2121,19 @@
       localStorage.setItem("ADMIN_API_KEY", String(apiKeyInput.value || ""));
       localStorage.setItem("EMPRESA_ID", String(empresaId));
       whatsappSettingsDialog.showModal();
-      try {
-        await loadWhatsappSettings();
-      } catch (error) {
+      const whatsappLoad = loadWhatsappSettings().catch((error) => {
         setSettingsFeedback(error.message, "error");
         renderWhatsappConnection({
           state: "error",
           title: "Não foi possível carregar",
           detail: error.message,
         });
-      }
+      });
+      const aiLoad = loadAiCredentials().catch((error) => {
+        aiCredentialsListEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+        setAiFeedback(error.message, "error");
+      });
+      await Promise.all([whatsappLoad, aiLoad]);
     }
 
     async function saveWhatsappSettings(event) {
@@ -1973,6 +2241,12 @@
     });
     btnCloseWhatsappSettings.addEventListener("click", () => whatsappSettingsDialog.close());
     whatsappSettingsForm.addEventListener("submit", saveWhatsappSettings);
+    aiCredentialForm.addEventListener("submit", createAiCredential);
+    aiCredentialsListEl.addEventListener("click", handleAiCredentialAction);
+    btnRefreshAiCredentials.addEventListener("click", () => {
+      setAiFeedback("");
+      loadAiCredentials().catch((error) => setAiFeedback(error.message, "error"));
+    });
     btnVerifyWhatsapp.addEventListener("click", () => {
       verifyWhatsappConnection().catch(() => {
         // O diálogo já apresenta o erro detalhado.

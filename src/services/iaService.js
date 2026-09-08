@@ -3,6 +3,13 @@ const fs = require("fs");
 const path = require("path");
 const logger = require("../utils/logger");
 const env = require("../config/env");
+const {
+  listRuntimeCandidates,
+  markFailure: markCredentialFailure,
+  markSuccess: markCredentialSuccess,
+  safeProviderError,
+  shouldTryNext,
+} = require("./aiCredentialService");
 
 function coerceNumber(value, defaultValue) {
   const n = Number(value);
@@ -384,15 +391,8 @@ async function callOpenAI({
   messageText,
   contextMessages = [],
   contato = null,
+  empresaId = null,
 }) {
-  const apiKey = env.optional("OPENAI_API_KEY", null);
-  if (!apiKey) return { reply: null, disabled: true };
-
-  const baseUrl = env
-    .optional("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    .replace(/\/+$/, "");
-  const model = env.optional("OPENAI_MODEL", "gpt-4o-mini");
-
   const temperature = coerceNumber(env.optional("OPENAI_TEMPERATURE", "1"), 1);
   const maxOutputTokens = Math.max(
     32,
@@ -419,90 +419,68 @@ async function callOpenAI({
     maxMessages: maxContextMessages,
   });
 
-  const apiStyle = String(
-    env.optional("OPENAI_API_STYLE", "responses"),
-  ).toLowerCase();
+  const candidates = await listRuntimeCandidates(empresaId);
+  if (!candidates.length) return { reply: null, disabled: true };
 
-  try {
-    if (apiStyle !== "chat") {
-      const r = await callOpenAIResponses({
-        apiKey,
-        baseUrl,
-        model,
-        temperature,
-        maxOutputTokens,
-        timeoutMs,
-        systemPrompt,
-        userText,
-        contextMessages: ctx,
-      });
-      return { ...r, disabled: false };
-    }
+  const configuredMaxAttempts = Math.max(
+    1,
+    Math.trunc(Number(process.env.AI_MAX_CREDENTIAL_ATTEMPTS) || 2),
+  );
+  const candidatesToTry = candidates.slice(0, configuredMaxAttempts);
+  let lastFailure = null;
 
-    const r2 = await callOpenAIChatCompletions({
-      apiKey,
-      baseUrl,
-      model,
-      temperature,
-      maxOutputTokens,
-      timeoutMs,
-      systemPrompt,
-      userText,
-      contextMessages: ctx,
-    });
-
-    return { ...r2, disabled: false };
-  } catch (err) {
-    const status = err.response?.status;
-    const data = err.response?.data;
-    const message = data?.error?.message || err.message;
-
-    logger.warn("OpenAI falhou (tentando fallback de endpoint)", {
-      status,
-      message,
-      model,
-      apiStyle,
-    });
-
+  for (let index = 0; index < candidatesToTry.length; index += 1) {
+    const candidate = candidatesToTry[index];
     try {
-      if (apiStyle !== "chat") {
-        const r2 = await callOpenAIChatCompletions({
-          apiKey,
-          baseUrl,
-          model,
-          temperature,
-          maxOutputTokens,
-          timeoutMs,
-          systemPrompt,
-          userText,
-          contextMessages: ctx,
-        });
-        return { ...r2, disabled: false };
-      }
-
-      const r = await callOpenAIResponses({
-        apiKey,
-        baseUrl,
-        model,
+      const params = {
+        apiKey: candidate.apiKey,
+        baseUrl: candidate.baseUrl,
+        model: candidate.model,
         temperature,
         maxOutputTokens,
         timeoutMs,
         systemPrompt,
         userText,
         contextMessages: ctx,
+      };
+      const result =
+        candidate.apiStyle === "chat"
+          ? await callOpenAIChatCompletions(params)
+          : await callOpenAIResponses(params);
+
+      await markCredentialSuccess(candidate).catch(() => {});
+      logger.info("OpenAI respondeu", {
+        empresaId,
+        credentialSource: candidate.source,
+        credentialFingerprint: candidate.fingerprint,
+        model: candidate.model,
+        attempt: index + 1,
       });
-      return { ...r, disabled: false };
-    } catch (err2) {
-      const status2 = err2.response?.status;
-      const data2 = err2.response?.data;
-      logger.error("OpenAI fallback falhou", {
-        status: status2,
-        message: data2?.error?.message || err2.message,
-        model,
+      return {
+        ...result,
+        disabled: false,
+        credentialFingerprint: candidate.fingerprint,
+      };
+    } catch (err) {
+      const detail = safeProviderError(err);
+      lastFailure = detail;
+      await markCredentialFailure(candidate, err).catch(() => {});
+      logger.warn("OpenAI falhou com credencial", {
+        empresaId,
+        credentialSource: candidate.source,
+        credentialFingerprint: candidate.fingerprint,
+        model: candidate.model,
+        attempt: index + 1,
+        status: detail.status,
+        code: detail.code,
+        message: detail.message,
       });
-      return { reply: null, disabled: false };
+
+      if (!shouldTryNext(err)) break;
     }
   }
+
+  return { reply: null, disabled: false, failure: lastFailure };
 }
 
 exports.gerarRespostaComMeta = async (input) => {
@@ -549,12 +527,14 @@ exports.gerarRespostaComMeta = async (input) => {
   const mensagem = isObj ? input.mensagem : String(input || "");
   const contextoMensagens = isObj ? input.contextoMensagens || [] : [];
   const contato = isObj ? input.contato || null : null;
+  const empresaId = isObj ? input.empresaId || null : null;
 
   try {
     const result = await callOpenAI({
       messageText: mensagem,
       contextMessages: contextoMensagens,
       contato,
+      empresaId,
     });
 
     if (result.disabled) {
@@ -580,7 +560,7 @@ exports.gerarRespostaComMeta = async (input) => {
           fallbackKind: reply2 === fallbackText ? "generic" : "smart",
           usedGenericFallback: reply2 === fallbackText,
           disabled: false,
-          reason: "empty_reply",
+          reason: result.failure?.code || "empty_reply",
         },
       };
     }

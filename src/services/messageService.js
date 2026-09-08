@@ -498,6 +498,7 @@ async function processarEvento(event) {
         mensagem,
         contextoMensagens,
         contato,
+        empresaId: empresa_id,
       });
       resposta = ia?.reply;
 

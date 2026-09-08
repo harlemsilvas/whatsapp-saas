@@ -283,4 +283,17 @@ describe("messageService.processar", () => {
     // Apenas entrada é criada diretamente aqui; a saída é responsabilidade do serviço compartilhado.
     expect(mocks.Mensagem.create).toHaveBeenCalledTimes(1);
   });
+
+  test("envia o empresaId para selecionar as credenciais de IA", async () => {
+    const { messageService, mocks } = loadServiceWithMocks({
+      fluxoResposta: null,
+      iaResposta: { reply: "Resposta da IA", meta: { isFallback: false } },
+    });
+
+    await messageService.processar(JSON.parse(JSON.stringify(basePayload)));
+
+    expect(mocks.iaService.gerarRespostaComMeta).toHaveBeenCalledWith(
+      expect.objectContaining({ empresaId: 1, mensagem: "oi" }),
+    );
+  });
 });

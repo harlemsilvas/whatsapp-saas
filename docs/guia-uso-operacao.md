@@ -19,6 +19,48 @@ Principais enderecos:
 - termos de servico: `https://bot.hrmmotos.com.br/terms`
 - exclusao de dados: `https://bot.hrmmotos.com.br/data-deletion`
 
+Na tela `Configuracoes basicas` da Meta, preencha `Dominios do aplicativo`
+somente com `bot.hrmmotos.com.br`, sem protocolo ou caminho. As URLs legais
+recebem os enderecos completos acima. A URL de retorno nao e preenchida nessa
+tela nem no Gerenciador do WhatsApp.
+
+Para configurar o retorno, abra o painel `Meta for Developers`, selecione o
+aplicativo e acesse `WhatsApp > Configuracao > Webhook`. Para o aplicativo
+atual, o endereco direto e:
+
+```text
+https://developers.facebook.com/apps/931281519613193/whatsapp-business/wa-settings/
+```
+
+Na secao `Webhook`, clique em `Editar` ou `Configurar webhooks` e informe:
+
+```text
+URL de callback: https://bot.hrmmotos.com.br/api/webhook
+Token de verificacao: o mesmo VERIFY_TOKEN da VPS
+```
+
+Depois de `Verificar e salvar`, use `Gerenciar` nos campos do webhook e assine
+`messages`. Dependendo do layout da conta, o menu pode aparecer como
+`Casos de uso > Personalizar > WhatsApp > Configuracao`.
+
+Na interface atual, essa area tambem pode aparecer em
+`Etapa 2 > Configuracao de producao > Configurar webhooks`. A presenca do botao
+`Remover assinatura` e do indicador verde confirma que o callback foi salvo.
+Mantenha o certificado de cliente desativado, salvo se o servidor tiver sido
+preparado especificamente para mTLS.
+
+Se a Meta exibir o alerta de aplicativo nao publicado, apenas os webhooks de
+teste disparados pelo painel serao entregues. Primeiro assine `messages` e use
+`Testar`; depois conclua os requisitos e publique o aplicativo para validar
+mensagens reais.
+
+O teste padrao do campo `messages` pode enviar identificadores ficticios, como
+`phone_number_id=123456123` e remetente `16315551181`. Ele valida callback,
+assinatura e processamento de entrada, mas uma tentativa de responder a esse
+remetente pode receber HTTP 400. Nao salve esses valores na empresa. Para
+validar envio e resposta, use o Phone Number ID real da tela de configuracao da
+API e envie uma mensagem a partir de um telefone autorizado.
+
 O `GET /api/webhook` sem os parametros `hub.*` retorna `403`. Isso e esperado e
 nao significa que o webhook esteja fora do ar.
 
@@ -120,6 +162,12 @@ O texto `No momento nao consegui responder automaticamente...` indica que a
 OpenAI esta desabilitada ou falhou. Atualmente o codigo deste repositorio usa
 OpenAI; Gemini ainda nao esta implementado como provedor alternativo.
 
+O caminho recomendado e abrir `Configuracoes > Inteligencia artificial` no
+painel da empresa. Cadastre nome, API key, modelo, estilo da API e prioridade.
+A chave so e armazenada depois de ser validada e nunca volta ao navegador.
+Use `Testar` para revalidar, `Desativar` para retira-la da rotacao e uma
+prioridade numerica menor para que seja tentada antes das demais.
+
 Confira somente a presenca das variaveis, sem imprimir seus valores:
 
 ```bash
@@ -190,6 +238,8 @@ O `.env` da VPS deve conter, no minimo:
 ```env
 NODE_ENV=production
 APP_PUBLIC_BASE_URL=https://bot.hrmmotos.com.br
+CORS_ALLOWED_ORIGINS=https://bot.hrmmotos.com.br
+CORS_ALLOW_NO_ORIGIN=true
 ADMIN_API_KEY=CHAVE_LONGA_E_ALEATORIA
 REQUIRE_ADMIN_API_KEY=true
 VERIFY_TOKEN=TOKEN_DE_VERIFICACAO
@@ -201,11 +251,38 @@ ALLOW_PHONE_ID_FALLBACK=false
 OPENAI_API_KEY=CHAVE_OPENAI
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_API_STYLE=responses
+CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
+AI_MAX_CREDENTIAL_ATTEMPTS=2
 WEBHOOK_WORKER_STATUSES=failed
 ```
 
+Antes do primeiro cadastro de chave pelo painel, gere uma chave mestra uma
+unica vez na VPS e adicione o resultado ao `.env` sem executar `source .env`:
+
+```bash
+openssl rand -base64 32
+```
+
+Depois do deploy, aplique `npm run db:migrate:ai-credentials` com o usuario dono
+do schema e reinicie API e worker. Nao troque nem perca
+`CREDENTIALS_ENCRYPTION_KEY`: as credenciais ja salvas dependem dela para serem
+descriptografadas. `OPENAI_API_KEY` pode permanecer no `.env` como ultimo
+fallback enquanto a migracao para as chaves por empresa e validada.
+
 Nao execute `source .env`: valores com espacos podem ser interpretados como
 comandos pelo shell. A API e o worker carregam o arquivo com `dotenv`.
+
+Se o painel exibir `CORS origin nao permitida`, confirme que
+`CORS_ALLOWED_ORIGINS` contem exatamente a origem do navegador, sem barra no
+final, e reinicie `whatsapp-saas-api` com `--update-env`.
+
+Validacao realizada em 8 de setembro de 2026 para a empresa `1`: Phone Number
+ID `993692280501871`, token armazenado e numero `+1 555-161-3563` (`Test
+Number`) aceitos pela Graph API.
+
+O teste real com um destinatario autorizado tambem foi concluido: entrada,
+persistencia, outbox, envio e estado `delivered` funcionaram. A resposta usou o
+fallback generico, deixando a OpenAI como unico bloqueio observado nesse fluxo.
 
 ## Resultado do diagnostico de 7/9/2026
 
