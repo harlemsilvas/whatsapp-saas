@@ -56,8 +56,8 @@ exports.create = async ({
        empresa_id, provider, label, api_key_ciphertext, api_key_iv,
        api_key_auth_tag, key_fingerprint, model, api_style, base_url,
        priority, enabled, status, last_checked_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-       CASE WHEN $13 = 'valid' THEN NOW() ELSE NULL END)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::text,
+       CASE WHEN $13::text = 'valid' THEN NOW() ELSE NULL END)
      RETURNING ${PUBLIC_COLUMNS}`,
     [
       empresaId,

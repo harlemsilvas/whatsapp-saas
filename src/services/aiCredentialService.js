@@ -108,12 +108,19 @@ function listEnvironmentFallbacks() {
   });
 }
 
-function safeProviderError(err) {
+function safeProviderError(err, provider = "") {
   const status = Number(err?.response?.status) || null;
   const providerCode = err?.response?.data?.error?.code || null;
   const providerType = err?.response?.data?.error?.type || null;
-  const message =
+  let message =
     err?.response?.data?.error?.message || err?.message || "Erro desconhecido";
+  if (
+    provider === "gemini" &&
+    (status === 404 || /model.*not found/i.test(String(message)))
+  ) {
+    message =
+      "Modelo Gemini não encontrado. Use gemini-2.5-flash-lite (econômico) ou gemini-2.5-flash.";
+  }
   return {
     status,
     code: String(providerCode || providerType || status || "network_error"),
@@ -243,7 +250,7 @@ async function markSuccess(candidate) {
 }
 
 async function markFailure(candidate, err) {
-  const detail = safeProviderError(err);
+  const detail = safeProviderError(err, candidate?.provider);
   if (candidate?.source !== "database") return detail;
 
   const authFailure = [401, 403].includes(detail.status);

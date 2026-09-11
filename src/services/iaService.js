@@ -463,7 +463,7 @@ async function callOpenAI({
         credentialFingerprint: candidate.fingerprint,
       };
     } catch (err) {
-      const detail = safeProviderError(err);
+      const detail = safeProviderError(err, candidate.provider);
       lastFailure = detail;
       await markCredentialFailure(candidate, err).catch(() => {});
       logger.warn("Provedor de IA falhou com credencial", {

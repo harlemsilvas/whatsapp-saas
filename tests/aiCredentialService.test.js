@@ -102,6 +102,21 @@ describe("aiCredentialService multi-provider", () => {
     );
   });
 
+  test("orienta sobre os modelos válidos quando o modelo Gemini não existe", () => {
+    jest.doMock("../src/models/AiProviderCredential", () => ({}));
+    const service = require("../src/services/aiCredentialService");
+    const error = {
+      response: {
+        status: 404,
+        data: { error: { message: "Model is not found" } },
+      },
+    };
+
+    expect(service.safeProviderError(error, "gemini").message).toBe(
+      "Modelo Gemini não encontrado. Use gemini-2.5-flash-lite (econômico) ou gemini-2.5-flash.",
+    );
+  });
+
   test("bloqueia base URL não oficial para Gemini e NVIDIA", () => {
     jest.doMock("../src/models/AiProviderCredential", () => ({}));
     const service = require("../src/services/aiCredentialService");

@@ -85,7 +85,7 @@ exports.criar = async (req, res, next) => {
     } catch (err) {
       return res.status(400).json({
         error: `Credencial rejeitada por ${config.provider}`,
-        provider: safeProviderError(err),
+        provider: safeProviderError(err, config.provider),
       });
     }
 
@@ -151,7 +151,7 @@ exports.atualizar = async (req, res, next) => {
       } catch (err) {
         return res.status(400).json({
           error: `Credencial rejeitada por ${config.provider}`,
-          provider: safeProviderError(err),
+          provider: safeProviderError(err, config.provider),
         });
       }
     }
@@ -215,7 +215,7 @@ exports.verificar = async (req, res, next) => {
       );
       return res.json({ ok: true, item, verified });
     } catch (err) {
-      const provider = safeProviderError(err);
+      const provider = safeProviderError(err, current.provider);
       const invalid = [400, 401, 403, 404].includes(provider.status);
       const item = await AiProviderCredential.markFailure(
         context.empresaId,
