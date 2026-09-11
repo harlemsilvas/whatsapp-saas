@@ -57,6 +57,7 @@ npm run db:migrate:outbox
 npm run db:migrate:outbox:provider-status
 npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
+npm run db:migrate:ai-multi-provider
 
 command -v pm2 >/dev/null 2>&1 || { echo "pm2 nao encontrado no PATH"; exit 1; }
 mkdir -p /home/whatsapp/logs

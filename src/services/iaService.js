@@ -7,6 +7,7 @@ const {
   listRuntimeCandidates,
   markFailure: markCredentialFailure,
   markSuccess: markCredentialSuccess,
+  providerHeaders,
   safeProviderError,
   shouldTryNext,
 } = require("./aiCredentialService");
@@ -311,6 +312,7 @@ async function callOpenAIResponses({
 
 async function callOpenAIChatCompletions({
   apiKey,
+  provider,
   baseUrl,
   model,
   temperature,
@@ -329,62 +331,59 @@ async function callOpenAIChatCompletions({
   ];
 
   const headers = {
-    Authorization: `Bearer ${apiKey}`,
+    ...providerHeaders(provider, apiKey),
     "Content-Type": "application/json",
   };
 
   const post = (body) => axios.post(url, body, { headers, timeout: timeoutMs });
 
-  // Preferência: modelos novos usam max_completion_tokens
-  const base = {
+  let body = {
     model,
     messages,
-    response_format: { type: "json_object" },
-    max_completion_tokens: maxOutputTokens,
     temperature,
+    ...(provider === "openai"
+      ? { max_completion_tokens: maxOutputTokens }
+      : { max_tokens: maxOutputTokens }),
+    ...(provider === "nvidia"
+      ? {}
+      : { response_format: { type: "json_object" } }),
   };
 
-  try {
-    const res = await post(base);
-    const content = res.data?.choices?.[0]?.message?.content || "";
-    const reply = extractReplyFromContent(content) || String(content).trim();
-    return { reply: reply || null, usage: res.data?.usage || null };
-  } catch (err) {
-    const status = err.response?.status;
-    const data = err.response?.data;
-    const message = data?.error?.message || err.message;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await post(body);
+      const content = response.data?.choices?.[0]?.message?.content || "";
+      const reply = extractReplyFromContent(content) || String(content).trim();
+      return { reply: reply || null, usage: response.data?.usage || null };
+    } catch (err) {
+      const status = err.response?.status;
+      const message = err.response?.data?.error?.message || err.message;
+      if (status !== 400) throw err;
 
-    // Retry sem temperature se o modelo não suportar custom
-    if (status === 400 && /temperature/i.test(String(message || ""))) {
-      logger.warn("OpenAI chat/completions: retry sem temperature", { model });
-      const res2 = await post({ ...base, temperature: undefined });
-      const content2 = res2.data?.choices?.[0]?.message?.content || "";
-      const reply2 =
-        extractReplyFromContent(content2) || String(content2).trim();
-      return { reply: reply2 || null, usage: res2.data?.usage || null };
+      if (/temperature/i.test(String(message || "")) && body.temperature !== undefined) {
+        logger.warn("IA chat/completions: retry sem temperature", { provider, model });
+        body = { ...body, temperature: undefined };
+        continue;
+      }
+      if (/max_completion_tokens/i.test(String(message || "")) && body.max_completion_tokens) {
+        logger.warn("IA chat/completions: retry com max_tokens", { provider, model });
+        body = {
+          ...body,
+          max_completion_tokens: undefined,
+          max_tokens: maxOutputTokens,
+        };
+        continue;
+      }
+      if (/response_format/i.test(String(message || "")) && body.response_format) {
+        logger.warn("IA chat/completions: retry sem response_format", { provider, model });
+        body = { ...body, response_format: undefined };
+        continue;
+      }
+      throw err;
     }
-
-    // Retry com max_tokens se max_completion_tokens não for aceito
-    if (
-      status === 400 &&
-      /max_completion_tokens/i.test(String(message || ""))
-    ) {
-      logger.warn("OpenAI chat/completions: retry com max_tokens", { model });
-      const res3 = await post({
-        model,
-        messages,
-        response_format: { type: "json_object" },
-        max_tokens: maxOutputTokens,
-        temperature,
-      });
-      const content3 = res3.data?.choices?.[0]?.message?.content || "";
-      const reply3 =
-        extractReplyFromContent(content3) || String(content3).trim();
-      return { reply: reply3 || null, usage: res3.data?.usage || null };
-    }
-
-    throw err;
   }
+
+  return { reply: null, usage: null };
 }
 
 async function callOpenAI({
@@ -424,7 +423,7 @@ async function callOpenAI({
 
   const configuredMaxAttempts = Math.max(
     1,
-    Math.trunc(Number(process.env.AI_MAX_CREDENTIAL_ATTEMPTS) || 2),
+    Math.trunc(Number(process.env.AI_MAX_CREDENTIAL_ATTEMPTS) || 3),
   );
   const candidatesToTry = candidates.slice(0, configuredMaxAttempts);
   let lastFailure = null;
@@ -434,6 +433,7 @@ async function callOpenAI({
     try {
       const params = {
         apiKey: candidate.apiKey,
+        provider: candidate.provider,
         baseUrl: candidate.baseUrl,
         model: candidate.model,
         temperature,
@@ -449,8 +449,9 @@ async function callOpenAI({
           : await callOpenAIResponses(params);
 
       await markCredentialSuccess(candidate).catch(() => {});
-      logger.info("OpenAI respondeu", {
+      logger.info("Provedor de IA respondeu", {
         empresaId,
+        provider: candidate.provider,
         credentialSource: candidate.source,
         credentialFingerprint: candidate.fingerprint,
         model: candidate.model,
@@ -465,8 +466,9 @@ async function callOpenAI({
       const detail = safeProviderError(err);
       lastFailure = detail;
       await markCredentialFailure(candidate, err).catch(() => {});
-      logger.warn("OpenAI falhou com credencial", {
+      logger.warn("Provedor de IA falhou com credencial", {
         empresaId,
+        provider: candidate.provider,
         credentialSource: candidate.source,
         credentialFingerprint: candidate.fingerprint,
         model: candidate.model,
@@ -566,7 +568,7 @@ exports.gerarRespostaComMeta = async (input) => {
     }
 
     if (result.usage) {
-      logger.info("OpenAI usage", {
+      logger.info("Uso do provedor de IA", {
         prompt_tokens: result.usage.prompt_tokens,
         completion_tokens: result.usage.completion_tokens,
         total_tokens: result.usage.total_tokens,

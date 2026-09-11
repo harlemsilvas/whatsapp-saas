@@ -5,34 +5,55 @@ describe("iaService credential failover", () => {
     delete process.env.AI_MAX_CREDENTIAL_ATTEMPTS;
   });
 
-  test("usa a proxima credencial quando a primeira retorna 401", async () => {
+  test("tenta Gemini, NVIDIA e por ultimo OpenAI", async () => {
     process.env.NODE_ENV = "test";
-    process.env.AI_MAX_CREDENTIAL_ATTEMPTS = "2";
+    process.env.AI_MAX_CREDENTIAL_ATTEMPTS = "3";
     const first = {
       source: "database",
       credentialId: 1,
       empresaId: 7,
       fingerprint: "first0000001",
-      apiKey: "sk-first",
+      apiKey: "gemini-key",
+      provider: "gemini",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-2.5-flash-lite",
+      apiStyle: "chat",
+    };
+    const second = {
+      ...first,
+      credentialId: 2,
+      fingerprint: "second000002",
+      apiKey: "nvidia-key",
+      provider: "nvidia",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      model: "meta/llama-3.1-8b-instruct",
+    };
+    const third = {
+      ...first,
+      credentialId: 3,
+      fingerprint: "third0000003",
+      apiKey: "openai-key",
+      provider: "openai",
       baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o-mini",
       apiStyle: "responses",
     };
-    const second = { ...first, credentialId: 2, fingerprint: "second000002", apiKey: "sk-second" };
     const markFailure = jest.fn(async () => ({}));
     const markSuccess = jest.fn(async () => ({}));
 
     jest.doMock("../src/services/aiCredentialService", () => ({
-      listRuntimeCandidates: jest.fn(async () => [first, second]),
+      listRuntimeCandidates: jest.fn(async () => [first, second, third]),
       markFailure,
       markSuccess,
-      safeProviderError: (err) => ({ status: err.response?.status || null, code: "401", message: "invalid" }),
-      shouldTryNext: (err) => err.response?.status === 401,
+      providerHeaders: (provider, apiKey) => ({ Authorization: `Bearer ${apiKey}`, "x-provider": provider }),
+      safeProviderError: (err) => ({ status: err.response?.status || null, code: String(err.response?.status), message: "failed" }),
+      shouldTryNext: (err) => [429, 500].includes(err.response?.status),
     }));
     const post = jest
       .fn()
-      .mockRejectedValueOnce({ response: { status: 401, data: { error: { message: "invalid" } } } })
-      .mockResolvedValueOnce({ data: { output_text: '{"reply":"Resposta pela segunda chave"}' } });
+      .mockRejectedValueOnce({ response: { status: 429, data: { error: { message: "limit" } } } })
+      .mockRejectedValueOnce({ response: { status: 500, data: { error: { message: "unavailable" } } } })
+      .mockResolvedValueOnce({ data: { output_text: '{"reply":"Resposta pela OpenAI"}' } });
     jest.doMock("axios", () => ({ post }));
     jest.doMock("../src/utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
@@ -42,10 +63,11 @@ describe("iaService credential failover", () => {
       empresaId: 7,
     });
 
-    expect(result.reply).toBe("Resposta pela segunda chave");
+    expect(result.reply).toBe("Resposta pela OpenAI");
     expect(result.meta.isFallback).toBe(false);
-    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenCalledTimes(3);
     expect(markFailure).toHaveBeenCalledWith(first, expect.anything());
-    expect(markSuccess).toHaveBeenCalledWith(second);
+    expect(markFailure).toHaveBeenCalledWith(second, expect.anything());
+    expect(markSuccess).toHaveBeenCalledWith(third);
   });
 });

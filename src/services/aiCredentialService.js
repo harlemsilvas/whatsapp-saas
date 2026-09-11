@@ -7,19 +7,46 @@ const {
   fingerprintSecret,
 } = require("../utils/credentialCrypto");
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const PROVIDERS = Object.freeze({
+  gemini: {
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    model: "gemini-2.5-flash-lite",
+    apiStyle: "chat",
+    priority: 10,
+  },
+  nvidia: {
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    model: "meta/llama-3.1-8b-instruct",
+    apiStyle: "chat",
+    priority: 20,
+  },
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+    apiStyle: "responses",
+    priority: 30,
+  },
+});
+
+const DEFAULT_BASE_URL = PROVIDERS.openai.baseUrl;
+
+function getProviderDefaults(provider) {
+  return PROVIDERS[String(provider || "").trim().toLowerCase()] || null;
+}
 
 function normalizeConfig(input = {}) {
   const provider = String(input.provider || "openai").trim().toLowerCase();
-  const model = String(input.model || "gpt-4o-mini").trim();
-  const apiStyle = String(input.apiStyle || input.api_style || "responses")
+  const defaults = getProviderDefaults(provider);
+  if (!defaults) throw new Error("Provedor deve ser gemini, nvidia ou openai");
+
+  const model = String(input.model || defaults.model).trim();
+  const apiStyle = String(input.apiStyle || input.api_style || defaults.apiStyle)
     .trim()
     .toLowerCase();
-  const baseUrl = String(input.baseUrl || input.base_url || DEFAULT_BASE_URL)
+  const baseUrl = String(input.baseUrl || input.base_url || defaults.baseUrl)
     .trim()
     .replace(/\/+$/, "");
 
-  if (provider !== "openai") throw new Error("Provedor ainda não suportado");
   if (!model) throw new Error("Modelo de IA obrigatório");
   if (!["responses", "chat"].includes(apiStyle)) {
     throw new Error("API style deve ser responses ou chat");
@@ -27,7 +54,58 @@ function normalizeConfig(input = {}) {
   if (!/^https:\/\//i.test(baseUrl)) {
     throw new Error("Base URL da IA deve usar HTTPS");
   }
+  if (provider !== "openai" && baseUrl !== defaults.baseUrl) {
+    throw new Error(`Base URL não permitida para ${provider}`);
+  }
+  if (provider !== "openai" && apiStyle !== "chat") {
+    throw new Error("Gemini e NVIDIA devem usar Chat Completions");
+  }
   return { provider, model, apiStyle, baseUrl };
+}
+
+function providerHeaders(provider, apiKey) {
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  if (provider === "gemini") {
+    headers["x-goog-api-client"] = "hdev-whatsapp-saas/1.0";
+  }
+  return headers;
+}
+
+function environmentConfigs() {
+  return [
+    {
+      provider: "gemini",
+      apiKey: process.env.GEMINI_API_KEY,
+      model: process.env.GEMINI_MODEL,
+      apiStyle: "chat",
+    },
+    {
+      provider: "nvidia",
+      apiKey: process.env.NVIDIA_API_KEY,
+      model: process.env.NVIDIA_MODEL,
+      apiStyle: "chat",
+    },
+    {
+      provider: "openai",
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL,
+      apiStyle: process.env.OPENAI_API_STYLE,
+      baseUrl: process.env.OPENAI_BASE_URL,
+    },
+  ];
+}
+
+function listEnvironmentFallbacks() {
+  return environmentConfigs().map((item) => {
+    const config = normalizeConfig(item);
+    return {
+      provider: config.provider,
+      configured: Boolean(String(item.apiKey || "").trim()),
+      model: config.model,
+      api_style: config.apiStyle,
+      priority: getProviderDefaults(config.provider).priority,
+    };
+  });
 }
 
 function safeProviderError(err) {
@@ -43,19 +121,44 @@ function safeProviderError(err) {
   };
 }
 
-async function validateCredential({ apiKey, model, baseUrl, timeoutMs = 15000 }) {
+async function validateCredential({
+  apiKey,
+  provider,
+  model,
+  apiStyle,
+  baseUrl,
+  timeoutMs = 15000,
+}) {
   const key = String(apiKey || "").trim();
   if (!key) throw new Error("Chave da IA obrigatória");
-  const config = normalizeConfig({ model, baseUrl });
-  const url = `${config.baseUrl}/models/${encodeURIComponent(config.model)}`;
+  const config = normalizeConfig({ provider, model, apiStyle, baseUrl });
+  const listOnly = config.provider === "nvidia";
+  const url = listOnly
+    ? `${config.baseUrl}/models`
+    : `${config.baseUrl}/models/${encodeURIComponent(config.model)}`;
   const response = await axios.get(url, {
-    headers: { Authorization: `Bearer ${key}` },
+    headers: providerHeaders(config.provider, key),
     timeout: timeoutMs,
   });
+  if (listOnly) {
+    const available = Array.isArray(response.data?.data)
+      ? response.data.data
+      : [];
+    if (!available.some((item) => item?.id === config.model)) {
+      const error = new Error(`Modelo ${config.model} não disponível na NVIDIA`);
+      error.response = {
+        status: 404,
+        data: {
+          error: { code: "model_not_found", message: error.message },
+        },
+      };
+      throw error;
+    }
+  }
   return {
     ok: true,
-    provider: "openai",
-    model: response.data?.id || config.model,
+    provider: config.provider,
+    model: listOnly ? config.model : response.data?.id || config.model,
   };
 }
 
@@ -81,13 +184,14 @@ async function listRuntimeCandidates(empresaId) {
         iv: record.api_key_iv,
         authTag: record.api_key_auth_tag,
       });
-      fingerprints.add(record.key_fingerprint);
+      fingerprints.add(`${record.provider}:${record.key_fingerprint}`);
       candidates.push({
         source: "database",
         credentialId: record.id,
         empresaId: record.empresa_id,
         fingerprint: record.key_fingerprint,
         status: record.status,
+        priority: record.priority,
         apiKey,
         ...normalizeConfig(record),
       });
@@ -101,27 +205,33 @@ async function listRuntimeCandidates(empresaId) {
     }
   }
 
-  const envKey = String(process.env.OPENAI_API_KEY || "").trim();
-  if (envKey) {
+  for (const envConfig of environmentConfigs()) {
+    const envKey = String(envConfig.apiKey || "").trim();
+    if (!envKey) continue;
+    const config = normalizeConfig(envConfig);
     const fingerprint = fingerprintSecret(envKey);
-    if (!fingerprints.has(fingerprint)) {
+    if (!fingerprints.has(`${config.provider}:${fingerprint}`)) {
+      const defaults = getProviderDefaults(config.provider);
       candidates.push({
         source: "environment",
         credentialId: null,
         empresaId,
         fingerprint,
+        status: "valid",
+        priority: defaults.priority,
         apiKey: envKey,
-        ...normalizeConfig({
-          provider: "openai",
-          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-          apiStyle: process.env.OPENAI_API_STYLE || "responses",
-          baseUrl: process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL,
-        }),
+        ...config,
       });
     }
   }
 
-  return candidates;
+  return candidates.sort((a, b) => {
+    const priorityDiff = Number(a.priority) - Number(b.priority);
+    if (priorityDiff) return priorityDiff;
+    const sourceDiff = Number(a.source === "environment") - Number(b.source === "environment");
+    if (sourceDiff) return sourceDiff;
+    return Number(a.credentialId || 0) - Number(b.credentialId || 0);
+  });
 }
 
 async function markSuccess(candidate) {
@@ -154,16 +264,20 @@ async function markFailure(candidate, err) {
 
 function shouldTryNext(err) {
   const status = Number(err?.response?.status) || null;
-  return !status || [401, 403, 429].includes(status) || status >= 500;
+  return !status || [400, 401, 403, 404, 429].includes(status) || status >= 500;
 }
 
 module.exports = {
   DEFAULT_BASE_URL,
+  PROVIDERS,
   encryptSecret,
+  getProviderDefaults,
   listRuntimeCandidates,
+  listEnvironmentFallbacks,
   markFailure,
   markSuccess,
   normalizeConfig,
+  providerHeaders,
   safeProviderError,
   shouldTryNext,
   validateCredential,

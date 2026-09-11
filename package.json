@@ -19,6 +19,7 @@
     "db:migrate:outbox:provider-status": "node scripts/migrateOutboxProviderStatus.js",
     "db:migrate:message-provider-status": "node scripts/migrateMessageProviderStatus.js",
     "db:migrate:ai-credentials": "node scripts/migrateAiProviderCredentials.js",
+    "db:migrate:ai-multi-provider": "node scripts/migrateAiMultiProvider.js",
     "webhook:reprocess": "node scripts/reprocessWebhookEvents.js",
     "test": "jest"
   },

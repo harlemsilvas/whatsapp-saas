@@ -2,6 +2,8 @@ const Empresa = require("../models/Empresa");
 const AiProviderCredential = require("../models/AiProviderCredential");
 const {
   encryptSecret,
+  getProviderDefaults,
+  listEnvironmentFallbacks,
   normalizeConfig,
   safeProviderError,
   validateCredential,
@@ -59,11 +61,7 @@ exports.listar = async (req, res, next) => {
     res.json({
       empresa: { id: context.empresa.id, nome: context.empresa.nome },
       items,
-      env_fallback: {
-        configured: Boolean(String(process.env.OPENAI_API_KEY || "").trim()),
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        api_style: process.env.OPENAI_API_STYLE || "responses",
-      },
+      env_fallbacks: listEnvironmentFallbacks(),
     });
   } catch (err) {
     next(err);
@@ -86,7 +84,7 @@ exports.criar = async (req, res, next) => {
       verified = await validateCredential({ apiKey, ...config });
     } catch (err) {
       return res.status(400).json({
-        error: "Credencial rejeitada pela OpenAI",
+        error: `Credencial rejeitada por ${config.provider}`,
         provider: safeProviderError(err),
       });
     }
@@ -99,7 +97,10 @@ exports.criar = async (req, res, next) => {
       model: config.model,
       apiStyle: config.apiStyle,
       baseUrl: config.baseUrl,
-      priority: parsePriority(req.body?.priority),
+      priority: parsePriority(
+        req.body?.priority,
+        getProviderDefaults(config.provider).priority,
+      ),
       enabled: req.body?.enabled !== false,
       status: "valid",
     });
@@ -123,6 +124,12 @@ exports.atualizar = async (req, res, next) => {
       credentialId,
     );
     if (!current) return res.status(404).json({ error: "Credencial não encontrada" });
+    if (
+      req.body?.provider &&
+      String(req.body.provider).trim().toLowerCase() !== current.provider
+    ) {
+      return res.status(400).json({ error: "O provedor de uma chave existente não pode ser alterado" });
+    }
 
     const apiKeyInput = String(req.body?.api_key || "").trim();
     const config = configOrBadRequest({ ...current, ...req.body }, res);
@@ -143,7 +150,7 @@ exports.atualizar = async (req, res, next) => {
         await validateCredential({ apiKey, ...config });
       } catch (err) {
         return res.status(400).json({
-          error: "Credencial rejeitada pela OpenAI",
+          error: `Credencial rejeitada por ${config.provider}`,
           provider: safeProviderError(err),
         });
       }
@@ -197,7 +204,9 @@ exports.verificar = async (req, res, next) => {
     try {
       const verified = await validateCredential({
         apiKey,
+        provider: current.provider,
         model: current.model,
+        apiStyle: current.api_style,
         baseUrl: current.base_url,
       });
       const item = await AiProviderCredential.markValid(
@@ -219,7 +228,7 @@ exports.verificar = async (req, res, next) => {
         },
       );
       return res.status(400).json({
-        error: "Credencial rejeitada pela OpenAI",
+        error: `Credencial rejeitada por ${current.provider}`,
         provider,
         item,
       });

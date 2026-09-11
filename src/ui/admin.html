@@ -769,28 +769,36 @@
         <form id="aiCredentialForm" style="margin-top: 16px">
           <div class="settings-grid">
             <div class="settings-field">
+              <label for="aiCredentialProvider">Provedor</label>
+              <select id="aiCredentialProvider">
+                <option value="gemini">Gemini · primário</option>
+                <option value="nvidia">NVIDIA · secundário</option>
+                <option value="openai">OpenAI · último fallback</option>
+              </select>
+            </div>
+            <div class="settings-field">
               <label for="aiCredentialLabel">Nome da chave</label>
               <input id="aiCredentialLabel" type="text" maxlength="100" placeholder="Ex.: Produção principal" required />
             </div>
             <div class="settings-field">
               <label for="aiCredentialKey">Nova API key</label>
-              <input id="aiCredentialKey" type="password" autocomplete="new-password" placeholder="sk-..." required />
+              <input id="aiCredentialKey" type="password" autocomplete="new-password" placeholder="Cole a chave do provedor" required />
             </div>
             <div class="settings-field">
               <label for="aiCredentialModel">Modelo</label>
-              <input id="aiCredentialModel" type="text" value="gpt-4o-mini" required />
+              <input id="aiCredentialModel" type="text" value="gemini-2.5-flash-lite" required />
             </div>
             <div class="settings-field">
               <label for="aiCredentialStyle">API style</label>
               <select id="aiCredentialStyle">
-                <option value="responses">Responses API</option>
                 <option value="chat">Chat Completions</option>
+                <option value="responses">Responses API</option>
               </select>
             </div>
             <div class="settings-field">
               <label for="aiCredentialPriority">Prioridade</label>
-              <input id="aiCredentialPriority" type="number" min="1" max="10000" value="100" required />
-              <div class="settings-help">Menor número é tentado primeiro.</div>
+              <input id="aiCredentialPriority" type="number" min="1" max="10000" value="10" required />
+              <div class="settings-help">Padrão: Gemini 10, NVIDIA 20 e OpenAI 30. Menor número é tentado primeiro.</div>
             </div>
           </div>
           <div id="aiCredentialFeedback" class="settings-feedback" role="status" aria-live="polite"></div>
@@ -842,6 +850,7 @@
     const btnVerifyWhatsapp = $("btnVerifyWhatsapp");
     const btnSaveWhatsapp = $("btnSaveWhatsapp");
     const aiCredentialForm = $("aiCredentialForm");
+    const aiCredentialProviderEl = $("aiCredentialProvider");
     const aiCredentialLabelEl = $("aiCredentialLabel");
     const aiCredentialKeyEl = $("aiCredentialKey");
     const aiCredentialModelEl = $("aiCredentialModel");
@@ -1985,6 +1994,22 @@
       aiCredentialFeedbackEl.className = `settings-feedback ${kind}`.trim();
     }
 
+    const AI_PROVIDER_DEFAULTS = {
+      gemini: { model: "gemini-2.5-flash-lite", apiStyle: "chat", priority: 10 },
+      nvidia: { model: "meta/llama-3.1-8b-instruct", apiStyle: "chat", priority: 20 },
+      openai: { model: "gpt-4o-mini", apiStyle: "responses", priority: 30 },
+    };
+
+    function applyAiProviderDefaults() {
+      const provider = aiCredentialProviderEl.value;
+      const defaults = AI_PROVIDER_DEFAULTS[provider];
+      if (!defaults) return;
+      aiCredentialModelEl.value = defaults.model;
+      aiCredentialStyleEl.value = defaults.apiStyle;
+      aiCredentialStyleEl.disabled = provider !== "openai";
+      aiCredentialPriorityEl.value = defaults.priority;
+    }
+
     function aiStatusLabel(item) {
       if (!item.enabled) return "Desativada";
       return {
@@ -1997,10 +2022,13 @@
 
     function renderAiCredentials(payload) {
       const items = Array.isArray(payload?.items) ? payload.items : [];
-      const fallback = payload?.env_fallback || {};
-      aiEnvFallbackEl.textContent = fallback.configured
-        ? `Fallback do .env ativo: ${fallback.model} · ${fallback.api_style}. Ele será tentado depois das chaves do banco.`
-        : "Fallback do .env não configurado. Somente as chaves desta empresa serão usadas.";
+      const fallbacks = Array.isArray(payload?.env_fallbacks) ? payload.env_fallbacks : [];
+      const fallbackText = fallbacks.map((item) =>
+        `${item.provider}: ${item.configured ? `${item.model} ativo` : "não configurado"}`
+      ).join(" · ");
+      aiEnvFallbackEl.textContent = fallbackText
+        ? `Fallbacks globais do .env · ${fallbackText}.`
+        : "Fallbacks do .env não configurados. Somente as chaves desta empresa serão usadas.";
 
       if (!items.length) {
         aiCredentialsListEl.innerHTML = '<div class="muted">Nenhuma chave cadastrada no banco.</div>';
@@ -2022,6 +2050,7 @@
             <div>
               <div class="ai-credential-title">
                 <strong>${escapeHtml(item.label)}</strong>
+                <span class="badge">${escapeHtml(String(item.provider || "").toUpperCase())}</span>
                 <span class="badge">${escapeHtml(aiStatusLabel(item))}</span>
                 <span class="muted">••••${escapeHtml(item.key_fingerprint)}</span>
               </div>
@@ -2061,9 +2090,11 @@
       }
 
       btnAddAiCredential.disabled = true;
-      setAiFeedback("Validando a chave na OpenAI antes de armazenar...");
+      const provider = aiCredentialProviderEl.value;
+      setAiFeedback(`Validando a chave em ${provider} antes de armazenar...`);
       try {
         await apiPost(apiUrl(`empresas/${empresaId}/ai/credentials`), {
+          provider,
           label: String(aiCredentialLabelEl.value || "").trim(),
           api_key: apiKey,
           model: String(aiCredentialModelEl.value || "").trim(),
@@ -2092,7 +2123,7 @@
       const action = button.dataset.action;
       if (action === "delete" && !window.confirm("Excluir esta chave de IA? Esta ação não pode ser desfeita.")) return;
       button.disabled = true;
-      setAiFeedback(action === "verify" ? "Testando chave na OpenAI..." : "Atualizando credencial...");
+      setAiFeedback(action === "verify" ? "Testando chave no provedor..." : "Atualizando credencial...");
       try {
         const basePath = `empresas/${empresaId}/ai/credentials/${credentialId}`;
         if (action === "verify") await apiPost(apiUrl(`${basePath}/verify`));
@@ -2242,6 +2273,7 @@
     btnCloseWhatsappSettings.addEventListener("click", () => whatsappSettingsDialog.close());
     whatsappSettingsForm.addEventListener("submit", saveWhatsappSettings);
     aiCredentialForm.addEventListener("submit", createAiCredential);
+    aiCredentialProviderEl.addEventListener("change", applyAiProviderDefaults);
     aiCredentialsListEl.addEventListener("click", handleAiCredentialAction);
     btnRefreshAiCredentials.addEventListener("click", () => {
       setAiFeedback("");
@@ -2265,6 +2297,7 @@
 
       apiKeyInput.value = key || localStorage.getItem("ADMIN_API_KEY") || "";
       empresaIdInput.value = localStorage.getItem("EMPRESA_ID") || "1";
+      applyAiProviderDefaults();
 
       if (key) {
         url.searchParams.delete("key");

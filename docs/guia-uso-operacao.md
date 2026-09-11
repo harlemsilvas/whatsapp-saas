@@ -158,9 +158,9 @@ pm2 logs whatsapp-saas-api --lines 200
 
 ### A entrada aparece, mas a resposta e generica
 
-O texto `No momento nao consegui responder automaticamente...` indica que a
-OpenAI esta desabilitada ou falhou. Atualmente o codigo deste repositorio usa
-OpenAI; Gemini ainda nao esta implementado como provedor alternativo.
+O texto `No momento nao consegui responder automaticamente...` indica que todos
+os provedores configurados falharam ou estao desabilitados. A ordem padrao e
+Gemini, NVIDIA e OpenAI, respeitando sempre a prioridade numerica salva.
 
 O caminho recomendado e abrir `Configuracoes > Inteligencia artificial` no
 painel da empresa. Cadastre nome, API key, modelo, estilo da API e prioridade.
@@ -176,8 +176,9 @@ node -e "require('dotenv').config(); for (const k of ['OPENAI_API_KEY','OPENAI_M
 pm2 logs whatsapp-saas-api --lines 200
 ```
 
-Procure nos logs por `IA respondeu com fallback` e pelo erro imediatamente
-anterior. Depois de corrigir o `.env`, reinicie a API com o ambiente atualizado:
+Procure nos logs por `Provedor de IA falhou com credencial`, incluindo o campo
+`provider`, e pelo erro imediatamente anterior. Depois de corrigir o `.env`,
+reinicie a API com o ambiente atualizado:
 
 ```bash
 pm2 restart whatsapp-saas-api --update-env
@@ -251,8 +252,12 @@ ALLOW_PHONE_ID_FALLBACK=false
 OPENAI_API_KEY=CHAVE_OPENAI
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_API_STYLE=responses
+GEMINI_API_KEY=CHAVE_GEMINI
+GEMINI_MODEL=gemini-2.5-flash-lite
+NVIDIA_API_KEY=CHAVE_NVIDIA
+NVIDIA_MODEL=meta/llama-3.1-8b-instruct
 CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
-AI_MAX_CREDENTIAL_ATTEMPTS=2
+AI_MAX_CREDENTIAL_ATTEMPTS=3
 WEBHOOK_WORKER_STATUSES=failed
 ```
 
@@ -282,7 +287,8 @@ Number`) aceitos pela Graph API.
 
 O teste real com um destinatario autorizado tambem foi concluido: entrada,
 persistencia, outbox, envio e estado `delivered` funcionaram. A resposta usou o
-fallback generico, deixando a OpenAI como unico bloqueio observado nesse fluxo.
+fallback generico, deixando a configuracao dos provedores de IA como unico
+bloqueio observado nesse fluxo.
 
 ## Resultado do diagnostico de 7/9/2026
 
@@ -303,5 +309,5 @@ Ordem recomendada para corrigir:
 1. Trocar `ADMIN_API_KEY` e `APP_PUBLIC_BASE_URL` na VPS.
 2. Confirmar o commit implantado e reiniciar o ecosystem com `--update-env`.
 3. Salvar e validar as credenciais WhatsApp da empresa `1`.
-4. Diagnosticar a OpenAI pelos logs e corrigir sua credencial/configuracao.
+4. Cadastrar e testar Gemini, NVIDIA e OpenAI, nessa ordem de prioridade.
 5. Enviar uma nova mensagem real e acompanhar conversa, outbox e os dois logs.

@@ -131,7 +131,7 @@ CREATE INDEX IF NOT EXISTS ix_outbox_messages_status_created_at
 CREATE TABLE ai_provider_credentials (
   id BIGSERIAL PRIMARY KEY,
   empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  provider VARCHAR(30) NOT NULL DEFAULT 'openai' CHECK (provider IN ('openai')),
+  provider VARCHAR(30) NOT NULL DEFAULT 'openai' CHECK (provider IN ('gemini', 'nvidia', 'openai')),
   label VARCHAR(100) NOT NULL,
   api_key_ciphertext TEXT NOT NULL,
   api_key_iv VARCHAR(64) NOT NULL,

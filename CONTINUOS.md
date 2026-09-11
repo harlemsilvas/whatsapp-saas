@@ -2,6 +2,39 @@
 
 Data da decisão: 7 de setembro de 2026.
 
+## Multi-provedor de IA - 10 de setembro de 2026
+
+Implementada e validada localmente a ampliacao da rotacao de IA para:
+
+1. Gemini como primario, prioridade padrao `10` e modelo
+   `gemini-2.5-flash-lite`;
+2. NVIDIA como secundario, prioridade padrao `20` e modelo
+   `meta/llama-3.1-8b-instruct`;
+3. OpenAI como ultimo fallback, prioridade padrao `30`.
+
+Gemini e NVIDIA usam endpoints oficiais compativeis com Chat Completions. A
+OpenAI preserva suporte a Responses API e Chat Completions. A migration aditiva
+`009-ai-multi-provider.sql` amplia o constraint sem alterar ou remover chaves
+OpenAI existentes. O limite recomendado passa a ser
+`AI_MAX_CREDENTIAL_ATTEMPTS=3` para permitir a sequencia completa.
+
+Variaveis globais opcionais de fallback: `GEMINI_API_KEY`, `GEMINI_MODEL`,
+`NVIDIA_API_KEY`, `NVIDIA_MODEL`, `OPENAI_API_KEY`, `OPENAI_MODEL` e
+`OPENAI_API_STYLE`. O cadastro pelo painel e preferivel porque preserva o
+isolamento por empresa.
+
+Validacao local concluida:
+
+- migrations `008` e `009` aplicadas em sequencia;
+- migration `009` repetida com sucesso para confirmar idempotencia;
+- 16 suites e 58 testes aprovados;
+- JavaScript inline do painel, sintaxe Node e `git diff --check` aprovados;
+- nenhuma chave real identificada no diff.
+
+Antes do proximo deploy, ajustar na VPS `AI_MAX_CREDENTIAL_ATTEMPTS=3`. As
+chaves podem ser cadastradas diretamente no painel depois que a migration `009`
+for aplicada pela CI.
+
 ## Implementacao de credenciais de IA - 8 de setembro de 2026
 
 Implementada localmente a configuracao OpenAI por empresa no painel admin:

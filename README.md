@@ -204,7 +204,7 @@ No terminal do ngrok, pare com `Ctrl+C`.
 - [ ] Garantir assinatura correta no App da Meta: evento `messages` + URL fixa (sem depender de ngrok)
 - [ ] Deploy com HTTPS (Nginx + Certbot) e processo (PM2) + restart automático
 - [ ] Rate limit / hardening no webhook (evitar abuso, logs e métricas)
-- [x] Credenciais WhatsApp e OpenAI isoladas por empresa, com onboarding no painel
+- [x] Credenciais WhatsApp e de IA isoladas por empresa, com onboarding no painel
 
 ## Admin (Empresas + Onboarding)
 
@@ -254,10 +254,13 @@ valida as credenciais na Graph API e nunca devolve o token armazenado ao
 navegador.
 
 Na seção `Inteligência artificial`, o mesmo painel permite cadastrar várias
-chaves OpenAI por empresa. As chaves são validadas antes da gravação,
+chaves Gemini, NVIDIA e OpenAI por empresa. As chaves são validadas antes da gravação,
 criptografadas com AES-256-GCM e exibidas apenas por impressão digital. A menor
 prioridade numérica é tentada primeiro; falhas de autenticação invalidam a
 chave e falhas transitórias ativam um cooldown antes do failover.
+
+A ordem padrão é Gemini (`10`), NVIDIA (`20`) e OpenAI (`30`). As prioridades
+podem ser alteradas no painel sem recadastrar a chave.
 
 ### Migração (não lidas)
 
@@ -296,6 +299,7 @@ npm run db:migrate:outbox
 npm run db:migrate:outbox:provider-status
 npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
+npm run db:migrate:ai-multi-provider
 ```
 
 Isso cria a tabela `outbox_messages` e habilita a correlação dos estados da Meta
@@ -349,15 +353,19 @@ O painel está em:
 
 Observação: o `?key=` é usado só para abrir a página no browser (ela remove do URL ao carregar). As chamadas de API usam `x-api-key`.
 
-## OpenAI (respostas por IA)
+## Provedores de IA
 
-O projeto tem um fallback de IA em `src/services/iaService.js`. Quando não existe fluxo correspondente, ele pode chamar a OpenAI para gerar uma resposta.
+Quando não existe fluxo correspondente, `src/services/iaService.js` tenta as
+credenciais válidas por prioridade. Gemini e NVIDIA usam Chat Completions
+OpenAI-compatible; OpenAI pode usar Responses API ou Chat Completions.
 
 ### Variáveis de ambiente
 
 - `CREDENTIALS_ENCRYPTION_KEY` (obrigatória para gravar/usar chaves do banco;
   gere uma única vez com `openssl rand -base64 32` e preserve em backup seguro)
-- `AI_MAX_CREDENTIAL_ATTEMPTS` (opcional, padrão: `2`)
+- `AI_MAX_CREDENTIAL_ATTEMPTS` (opcional, padrão: `3`)
+- `GEMINI_API_KEY` e `GEMINI_MODEL` (fallbacks globais opcionais)
+- `NVIDIA_API_KEY` e `NVIDIA_MODEL` (fallbacks globais opcionais)
 - `OPENAI_API_KEY` (opcional; usada como último fallback após as chaves do banco)
 - `OPENAI_MODEL` (opcional, padrão: `gpt-4o-mini`)
 - `OPENAI_BASE_URL` (opcional, padrão: `https://api.openai.com/v1`)
@@ -384,13 +392,17 @@ Nota: em alguns modelos (ex.: `gpt-5-nano`), o endpoint `/v1/responses` pode ret
 Exemplo no `.env`:
 
 ```bash
+GEMINI_API_KEY=SEU_TOKEN_GEMINI
+GEMINI_MODEL=gemini-2.5-flash-lite
+NVIDIA_API_KEY=SEU_TOKEN_NVIDIA
+NVIDIA_MODEL=meta/llama-3.1-8b-instruct
 OPENAI_API_KEY=SEU_TOKEN_DA_OPENAI
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_API_STYLE=responses
 OPENAI_MAX_OUTPUT_TOKENS=220
 OPENAI_TEMPERATURE=0.4
 CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
-AI_MAX_CREDENTIAL_ATTEMPTS=2
+AI_MAX_CREDENTIAL_ATTEMPTS=3
 ```
 
 ### API de conversas (protegida por `x-api-key`)
