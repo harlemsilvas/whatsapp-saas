@@ -98,6 +98,47 @@ barra de enderecos e usa a chave no header `x-api-key` nas chamadas seguintes.
 7. O campo de envio do painel cria uma mensagem manual. Esse teste valida
    banco, outbox, worker e Graph API, mas nao valida o webhook nem a IA.
 
+## Atualizar o token da Meta
+
+Quando a conexao exibir `Error validating access token: Session has expired`,
+o token de acesso da Meta expirou. O `Phone Number ID` e o webhook continuam
+validos e nao devem ser alterados por esse motivo.
+
+Para producao, nao reutilize o token temporario exibido em
+`WhatsApp > Configuracao da API`. Gere um token por usuario do sistema:
+
+1. Acesse as [Configuracoes do negocio da Meta](https://business.facebook.com/settings/system-users?business_id=1679554223178097).
+2. Entre em `Usuarios > Usuarios do sistema`.
+3. Crie um usuario chamado `whatsapp-saas`, preferencialmente como
+   administrador.
+4. Em `Adicionar ativos`, conceda acesso total ao aplicativo
+   `931281519613193`.
+5. Adicione a conta do WhatsApp correspondente e permita gerenciar a conta.
+6. Clique em `Gerar novo token` e selecione o aplicativo `931281519613193`.
+7. Escolha a validade `Nunca`, quando essa opcao estiver disponivel.
+8. Marque as permissoes `whatsapp_business_messaging` e
+   `whatsapp_business_management`.
+9. Gere e armazene o token em local seguro. Nunca o envie em mensagens, logs,
+   documentacao ou capturas de tela.
+
+Para substituir o token no `whatsapp-saas`:
+
+1. Abra `Configuracoes da empresa > Configurar WhatsApp`.
+2. Mantenha o Phone Number ID atual. Para a empresa `1`, o valor confirmado e
+   `993692280501871`.
+3. Cole o novo valor em `Token de acesso`.
+4. Clique em `Salvar e validar`.
+5. Execute `Testar conexao atual` para confirmar a Graph API.
+
+O token e atualizado diretamente no banco e passa a ser lido nas proximas
+operacoes. Nao e necessario reiniciar a API ou o worker. O `VERIFY_TOKEN` do
+webhook e uma credencial independente e nao deve ser substituido junto com o
+token de acesso.
+
+A expiracao bloqueia validacoes e mensagens de saida na Graph API. O
+recebimento pelo webhook pode continuar funcionando, pois usa a assinatura e o
+`VERIFY_TOKEN`, e nao o token de envio armazenado para a empresa.
+
 ## Teste ponta a ponta
 
 Use um telefone autorizado no aplicativo da Meta para enviar uma mensagem de
@@ -253,9 +294,9 @@ OPENAI_API_KEY=CHAVE_OPENAI
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_API_STYLE=responses
 GEMINI_API_KEY=CHAVE_GEMINI
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
 NVIDIA_API_KEY=CHAVE_NVIDIA
-NVIDIA_MODEL=meta/llama-3.1-8b-instruct
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
 AI_MAX_CREDENTIAL_ATTEMPTS=3
 WEBHOOK_WORKER_STATUSES=failed

@@ -10,13 +10,13 @@ const {
 const PROVIDERS = Object.freeze({
   gemini: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    model: "gemini-2.5-flash-lite",
+    model: "gemini-3.5-flash-lite",
     apiStyle: "chat",
     priority: 10,
   },
   nvidia: {
     baseUrl: "https://integrate.api.nvidia.com/v1",
-    model: "meta/llama-3.1-8b-instruct",
+    model: "nvidia/nemotron-3.5-lightning-30b-a3b",
     apiStyle: "chat",
     priority: 20,
   },
@@ -109,17 +109,21 @@ function listEnvironmentFallbacks() {
 }
 
 function safeProviderError(err, provider = "") {
+  const responseData = err?.response?.data;
+  const responseError = Array.isArray(responseData)
+    ? responseData[0]?.error
+    : responseData?.error;
   const status = Number(err?.response?.status) || null;
-  const providerCode = err?.response?.data?.error?.code || null;
-  const providerType = err?.response?.data?.error?.type || null;
+  const providerCode = responseError?.code || null;
+  const providerType = responseError?.type || null;
   let message =
-    err?.response?.data?.error?.message || err?.message || "Erro desconhecido";
+    responseError?.message || responseData?.detail || err?.message || "Erro desconhecido";
   if (
     provider === "gemini" &&
     (status === 404 || /model.*not found/i.test(String(message)))
   ) {
     message =
-      "Modelo Gemini não encontrado. Use gemini-2.5-flash-lite (econômico) ou gemini-2.5-flash.";
+      "Modelo Gemini não disponível para esta chave. Use gemini-3.5-flash-lite ou gemini-3.6-flash.";
   }
   return {
     status,
@@ -139,33 +143,35 @@ async function validateCredential({
   const key = String(apiKey || "").trim();
   if (!key) throw new Error("Chave da IA obrigatória");
   const config = normalizeConfig({ provider, model, apiStyle, baseUrl });
-  const listOnly = config.provider === "nvidia";
-  const url = listOnly
-    ? `${config.baseUrl}/models`
-    : `${config.baseUrl}/models/${encodeURIComponent(config.model)}`;
-  const response = await axios.get(url, {
-    headers: providerHeaders(config.provider, key),
-    timeout: timeoutMs,
-  });
-  if (listOnly) {
-    const available = Array.isArray(response.data?.data)
-      ? response.data.data
-      : [];
-    if (!available.some((item) => item?.id === config.model)) {
-      const error = new Error(`Modelo ${config.model} não disponível na NVIDIA`);
-      error.response = {
-        status: 404,
-        data: {
-          error: { code: "model_not_found", message: error.message },
+  if (["gemini", "nvidia"].includes(config.provider)) {
+    await axios.post(
+      `${config.baseUrl}/chat/completions`,
+      {
+        model: config.model,
+        messages: [{ role: "user", content: "Responda apenas OK" }],
+        max_tokens: 8,
+      },
+      {
+        headers: {
+          ...providerHeaders(config.provider, key),
+          "Content-Type": "application/json",
         },
-      };
-      throw error;
-    }
+        timeout: timeoutMs,
+      },
+    );
+  } else {
+    await axios.get(
+      `${config.baseUrl}/models/${encodeURIComponent(config.model)}`,
+      {
+        headers: providerHeaders(config.provider, key),
+        timeout: timeoutMs,
+      },
+    );
   }
   return {
     ok: true,
     provider: config.provider,
-    model: listOnly ? config.model : response.data?.id || config.model,
+    model: config.model,
   };
 }
 

@@ -18,7 +18,7 @@ describe("AiProviderCredential", () => {
         authTag: "tag",
         fingerprint: "fingerprint",
       },
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-3.5-flash-lite",
       apiStyle: "chat",
       baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
       priority: 10,

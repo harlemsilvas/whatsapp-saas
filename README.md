@@ -200,7 +200,9 @@ No terminal do ngrok, pare com `Ctrl+C`.
 
 ### Próximos passos (recomendado)
 
-- [ ] Token de longo prazo (produção): trocar token temporário por System User / token com expiração adequada
+O backlog detalhado de melhorias está em [FEATURES.md](FEATURES.md).
+
+- [ ] Token de longo prazo (produção): seguir [Atualizar o token da Meta](docs/guia-uso-operacao.md#atualizar-o-token-da-meta)
 - [ ] Garantir assinatura correta no App da Meta: evento `messages` + URL fixa (sem depender de ngrok)
 - [ ] Deploy com HTTPS (Nginx + Certbot) e processo (PM2) + restart automático
 - [ ] Rate limit / hardening no webhook (evitar abuso, logs e métricas)
@@ -393,9 +395,9 @@ Exemplo no `.env`:
 
 ```bash
 GEMINI_API_KEY=SEU_TOKEN_GEMINI
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
 NVIDIA_API_KEY=SEU_TOKEN_NVIDIA
-NVIDIA_MODEL=meta/llama-3.1-8b-instruct
+NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 OPENAI_API_KEY=SEU_TOKEN_DA_OPENAI
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_API_STYLE=responses

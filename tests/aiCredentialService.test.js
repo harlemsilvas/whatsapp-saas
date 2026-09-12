@@ -43,56 +43,59 @@ describe("aiCredentialService multi-provider", () => {
     expect(candidates.map((item) => item.priority)).toEqual([10, 20, 30]);
     expect(candidates[0]).toEqual(
       expect.objectContaining({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-3.5-flash-lite",
         apiStyle: "chat",
       }),
     );
   });
 
-  test("valida NVIDIA consultando o catálogo de modelos", async () => {
-    const get = jest.fn(async () => ({
-      data: { data: [{ id: "meta/llama-3.1-8b-instruct" }] },
-    }));
-    jest.doMock("axios", () => ({ get }));
+  test("valida NVIDIA executando uma inferência curta", async () => {
+    const post = jest.fn(async () => ({ data: { choices: [] } }));
+    jest.doMock("axios", () => ({ post }));
     jest.doMock("../src/models/AiProviderCredential", () => ({}));
 
     const service = require("../src/services/aiCredentialService");
     const result = await service.validateCredential({
       apiKey: "nvapi-test",
       provider: "nvidia",
-      model: "meta/llama-3.1-8b-instruct",
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b",
       apiStyle: "chat",
     });
 
     expect(result).toEqual({
       ok: true,
       provider: "nvidia",
-      model: "meta/llama-3.1-8b-instruct",
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b",
     });
-    expect(get).toHaveBeenCalledWith(
-      "https://integrate.api.nvidia.com/v1/models",
+    expect(post).toHaveBeenCalledWith(
+      "https://integrate.api.nvidia.com/v1/chat/completions",
+      expect.objectContaining({
+        model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        max_tokens: 8,
+      }),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer nvapi-test" }),
       }),
     );
   });
 
-  test("valida Gemini com endpoint e identificação de cliente oficiais", async () => {
-    const get = jest.fn(async () => ({ data: { id: "gemini-2.5-flash-lite" } }));
-    jest.doMock("axios", () => ({ get }));
+  test("valida Gemini com inferência e identificação de cliente oficiais", async () => {
+    const post = jest.fn(async () => ({ data: { choices: [] } }));
+    jest.doMock("axios", () => ({ post }));
     jest.doMock("../src/models/AiProviderCredential", () => ({}));
 
     const service = require("../src/services/aiCredentialService");
     const result = await service.validateCredential({
       apiKey: "gemini-test",
       provider: "gemini",
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-3.5-flash-lite",
       apiStyle: "chat",
     });
 
     expect(result.provider).toBe("gemini");
-    expect(get).toHaveBeenCalledWith(
-      "https://generativelanguage.googleapis.com/v1beta/openai/models/gemini-2.5-flash-lite",
+    expect(post).toHaveBeenCalledWith(
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      expect.objectContaining({ model: "gemini-3.5-flash-lite" }),
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer gemini-test",
@@ -113,8 +116,25 @@ describe("aiCredentialService multi-provider", () => {
     };
 
     expect(service.safeProviderError(error, "gemini").message).toBe(
-      "Modelo Gemini não encontrado. Use gemini-2.5-flash-lite (econômico) ou gemini-2.5-flash.",
+      "Modelo Gemini não disponível para esta chave. Use gemini-3.5-flash-lite ou gemini-3.6-flash.",
     );
+  });
+
+  test("extrai o erro retornado pelo Gemini em formato de lista", () => {
+    jest.doMock("../src/models/AiProviderCredential", () => ({}));
+    const service = require("../src/services/aiCredentialService");
+    const error = {
+      response: {
+        status: 429,
+        data: [{ error: { code: 429, message: "Quota exceeded" } }],
+      },
+    };
+
+    expect(service.safeProviderError(error, "gemini")).toEqual({
+      status: 429,
+      code: "429",
+      message: "Quota exceeded",
+    });
   });
 
   test("bloqueia base URL não oficial para Gemini e NVIDIA", () => {

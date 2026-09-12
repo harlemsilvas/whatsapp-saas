@@ -786,7 +786,7 @@
             </div>
             <div class="settings-field">
               <label for="aiCredentialModel">Modelo</label>
-              <input id="aiCredentialModel" type="text" value="gemini-2.5-flash-lite" required />
+              <input id="aiCredentialModel" type="text" value="gemini-3.5-flash-lite" required />
             </div>
             <div class="settings-field">
               <label for="aiCredentialStyle">API style</label>
@@ -1995,8 +1995,8 @@
     }
 
     const AI_PROVIDER_DEFAULTS = {
-      gemini: { model: "gemini-2.5-flash-lite", apiStyle: "chat", priority: 10 },
-      nvidia: { model: "meta/llama-3.1-8b-instruct", apiStyle: "chat", priority: 20 },
+      gemini: { model: "gemini-3.5-flash-lite", apiStyle: "chat", priority: 10 },
+      nvidia: { model: "nvidia/nemotron-3.5-lightning-30b-a3b", apiStyle: "chat", priority: 20 },
       openai: { model: "gpt-4o-mini", apiStyle: "responses", priority: 30 },
     };
 

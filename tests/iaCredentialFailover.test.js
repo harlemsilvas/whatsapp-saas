@@ -16,7 +16,7 @@ describe("iaService credential failover", () => {
       apiKey: "gemini-key",
       provider: "gemini",
       baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-3.5-flash-lite",
       apiStyle: "chat",
     };
     const second = {
@@ -26,7 +26,7 @@ describe("iaService credential failover", () => {
       apiKey: "nvidia-key",
       provider: "nvidia",
       baseUrl: "https://integrate.api.nvidia.com/v1",
-      model: "meta/llama-3.1-8b-instruct",
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b",
     };
     const third = {
       ...first,
