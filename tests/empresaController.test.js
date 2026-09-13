@@ -34,6 +34,9 @@ describe("empresaController WhatsApp credentials", () => {
       nome: "Empresa Teste",
       phone_number_id: payload.phone_number_id,
       whatsapp_token: payload.whatsapp_token,
+      whatsapp_token_ciphertext: "ciphertext",
+      whatsapp_token_iv: "iv",
+      whatsapp_token_auth_tag: "auth-tag",
     }));
     const axiosGet = jest.fn(async () => ({
       data: {
@@ -87,6 +90,13 @@ describe("empresaController WhatsApp credentials", () => {
       }),
     );
     expect(res.payload.empresa).not.toHaveProperty("whatsapp_token");
+    expect(res.payload.empresa).not.toHaveProperty(
+      "whatsapp_token_ciphertext",
+    );
+    expect(res.payload.empresa).not.toHaveProperty("whatsapp_token_iv");
+    expect(res.payload.empresa).not.toHaveProperty(
+      "whatsapp_token_auth_tag",
+    );
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -130,5 +140,35 @@ describe("empresaController WhatsApp credentials", () => {
       }),
     );
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("empresaController tenant deletion", () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  test("impede exclusão da empresa por chave de operação", async () => {
+    const remove = jest.fn();
+    jest.doMock("../src/models/Empresa", () => ({ remove }));
+    jest.doMock("axios", () => ({}));
+    const controller = require("../src/controllers/empresaController");
+    const req = {
+      params: { id: "1" },
+      adminActor: { permissions: ["read", "write"] },
+    };
+    const res = {
+      statusCode: 200,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json: jest.fn(),
+    };
+
+    await controller.remover(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(403);
+    expect(remove).not.toHaveBeenCalled();
   });
 });

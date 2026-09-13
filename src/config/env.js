@@ -40,6 +40,10 @@ function validate() {
     process.env.REQUIRE_WHATSAPP_WEBHOOK_SIGNATURE,
     isProd,
   );
+  const requireCredentialsEncryptionKey = toBool(
+    process.env.REQUIRE_CREDENTIALS_ENCRYPTION_KEY,
+    isProd,
+  );
 
   if (requireDb) {
     required("DB_HOST");
@@ -64,6 +68,11 @@ function validate() {
 
   if (requireWhatsAppWebhookSignature) {
     required("WHATSAPP_APP_SECRET");
+  }
+
+  if (requireCredentialsEncryptionKey) {
+    required("CREDENTIALS_ENCRYPTION_KEY");
+    require("../utils/credentialCrypto").getEncryptionKey();
   }
 
   // LOG_LEVEL é opcional; PORT também.

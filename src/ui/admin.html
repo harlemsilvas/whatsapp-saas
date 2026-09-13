@@ -765,6 +765,7 @@
         <div id="settingsFeedback" class="settings-feedback" role="status" aria-live="polite"></div>
 
         <div class="settings-actions">
+          <button id="btnRevokeWhatsapp" class="danger-button" type="button">Revogar token</button>
           <button id="btnVerifyWhatsapp" class="button-secondary" type="button">Testar conexão atual</button>
           <button id="btnSaveWhatsapp" class="button-success" type="submit">Salvar e validar</button>
         </div>
@@ -823,6 +824,46 @@
           <div class="muted">Carregando credenciais...</div>
         </div>
       </section>
+
+      <section class="ai-settings" aria-labelledby="adminSecurityTitle">
+        <h3 id="adminSecurityTitle">Acesso administrativo</h3>
+        <div class="settings-help">
+          Gere chaves restritas a esta empresa. A chave completa aparece uma única vez.
+        </div>
+        <form id="adminKeyForm" style="margin-top:16px">
+          <div class="settings-grid">
+            <div class="settings-field">
+              <label for="adminKeyLabel">Nome do acesso</label>
+              <input id="adminKeyLabel" maxlength="100" placeholder="Ex.: Equipe comercial" required />
+            </div>
+            <div class="settings-field">
+              <label for="adminKeyProfile">Perfil</label>
+              <select id="adminKeyProfile">
+                <option value="operator">Operação · leitura e escrita</option>
+                <option value="reader">Somente leitura</option>
+                <option value="manager">Gestor · incluindo novas chaves</option>
+              </select>
+            </div>
+            <div class="settings-field">
+              <label for="adminKeyExpiresAt">Expira em</label>
+              <input id="adminKeyExpiresAt" type="datetime-local" />
+            </div>
+          </div>
+          <div id="adminKeyFeedback" class="settings-feedback" role="status" aria-live="polite"></div>
+          <div id="adminKeyReveal" class="settings-meta" hidden>
+            <strong>Guarde esta chave agora</strong>
+            <code id="adminKeyValue"></code>
+            <div class="settings-help">Ela não poderá ser consultada novamente.</div>
+          </div>
+          <div class="settings-actions">
+            <button id="btnRefreshAdminSecurity" class="button-secondary" type="button">Atualizar</button>
+            <button class="button-success" type="submit">Gerar chave</button>
+          </div>
+        </form>
+        <div id="adminKeysList" class="ai-credential-list"></div>
+        <h3 style="margin-top:24px">Auditoria recente</h3>
+        <div id="adminAuditList" class="ai-credential-list"></div>
+      </section>
     </div>
   </dialog>
 
@@ -872,6 +913,17 @@
     const aiEnvFallbackEl = $("aiEnvFallback");
     const btnAddAiCredential = $("btnAddAiCredential");
     const btnRefreshAiCredentials = $("btnRefreshAiCredentials");
+    const btnRevokeWhatsapp = $("btnRevokeWhatsapp");
+    const adminKeyForm = $("adminKeyForm");
+    const adminKeyLabelEl = $("adminKeyLabel");
+    const adminKeyProfileEl = $("adminKeyProfile");
+    const adminKeyExpiresAtEl = $("adminKeyExpiresAt");
+    const adminKeyFeedbackEl = $("adminKeyFeedback");
+    const adminKeyRevealEl = $("adminKeyReveal");
+    const adminKeyValueEl = $("adminKeyValue");
+    const adminKeysListEl = $("adminKeysList");
+    const adminAuditListEl = $("adminAuditList");
+    const btnRefreshAdminSecurity = $("btnRefreshAdminSecurity");
 
     let currentContatoId = null;
     let currentContato = null;
@@ -2161,6 +2213,113 @@
       }
     }
 
+    function setAdminKeyFeedback(message, kind = "") {
+      adminKeyFeedbackEl.textContent = message || "";
+      adminKeyFeedbackEl.className = `settings-feedback ${kind}`.trim();
+    }
+
+    function renderAdminKeys(payload) {
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      adminKeysListEl.innerHTML = items.length
+        ? items.map((item) => {
+            const state = item.revoked_at
+              ? "Revogada"
+              : item.enabled
+                ? "Ativa"
+                : "Desativada";
+            const expires = item.expires_at
+              ? ` · expira ${new Date(item.expires_at).toLocaleString()}`
+              : " · sem expiração";
+            return `
+              <article class="ai-credential-card" data-admin-key-id="${item.id}">
+                <div>
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <span class="badge">${escapeHtml(state)}</span>
+                  <div class="muted">${escapeHtml(item.key_prefix)}… · ${escapeHtml((item.permissions || []).join(", "))}${escapeHtml(expires)}</div>
+                </div>
+                ${item.revoked_at ? "" : '<button type="button" class="danger-button" data-action="revoke-admin-key">Revogar</button>'}
+              </article>`;
+          }).join("")
+        : '<div class="muted">Nenhuma chave específica desta empresa.</div>';
+    }
+
+    function renderAdminAudit(payload) {
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      adminAuditListEl.innerHTML = items.length
+        ? items.slice(0, 20).map((item) => `
+            <article class="ai-credential-card">
+              <div>
+                <strong>${escapeHtml(item.action)}</strong>
+                <div class="muted">${escapeHtml(item.actor_label || item.actor_type)} · ${new Date(item.created_at).toLocaleString()}</div>
+              </div>
+              <span class="badge">${escapeHtml(String(item.metadata?.status || "OK"))}</span>
+            </article>`).join("")
+        : '<div class="muted">Nenhuma ação auditada nesta empresa.</div>';
+    }
+
+    async function loadAdminSecurity() {
+      const empresaId = Number(empresaIdInput.value || 0);
+      adminKeysListEl.innerHTML = '<div class="muted">Carregando acessos...</div>';
+      adminAuditListEl.innerHTML = '<div class="muted">Carregando auditoria...</div>';
+      const [keysResult, auditResult] = await Promise.allSettled([
+        apiGet(apiUrl(`empresas/${empresaId}/admin-keys`)),
+        apiGet(apiUrl(`empresas/${empresaId}/audit?limit=20`)),
+      ]);
+      if (keysResult.status === "fulfilled") {
+        renderAdminKeys(keysResult.value);
+      } else {
+        adminKeysListEl.innerHTML = `<div class="muted">${escapeHtml(keysResult.reason.message)}</div>`;
+      }
+      if (auditResult.status === "fulfilled") {
+        renderAdminAudit(auditResult.value);
+      } else {
+        adminAuditListEl.innerHTML = `<div class="error">${escapeHtml(auditResult.reason.message)}</div>`;
+      }
+    }
+
+    async function createAdminKey(event) {
+      event.preventDefault();
+      const empresaId = Number(empresaIdInput.value || 0);
+      const profiles = {
+        reader: ["read"],
+        operator: ["read", "write"],
+        manager: ["read", "write", "manage_keys"],
+      };
+      setAdminKeyFeedback("Gerando acesso restrito...");
+      try {
+        const expiresInput = String(adminKeyExpiresAtEl.value || "").trim();
+        const result = await apiPost(apiUrl(`empresas/${empresaId}/admin-keys`), {
+          label: String(adminKeyLabelEl.value || "").trim(),
+          permissions: profiles[adminKeyProfileEl.value],
+          expires_at: expiresInput ? new Date(expiresInput).toISOString() : null,
+        });
+        adminKeyValueEl.textContent = result.api_key;
+        adminKeyRevealEl.hidden = false;
+        adminKeyLabelEl.value = "";
+        await loadAdminSecurity();
+        setAdminKeyFeedback("Chave criada. Guarde o valor exibido agora.", "success");
+      } catch (error) {
+        setAdminKeyFeedback(error.message, "error");
+      }
+    }
+
+    async function handleAdminKeyAction(event) {
+      const button = event.target.closest('[data-action="revoke-admin-key"]');
+      if (!button) return;
+      if (!window.confirm("Revogar esta chave administrativa?")) return;
+      const card = button.closest("[data-admin-key-id]");
+      const keyId = Number(card?.dataset.adminKeyId || 0);
+      const empresaId = Number(empresaIdInput.value || 0);
+      button.disabled = true;
+      try {
+        await apiDelete(apiUrl(`empresas/${empresaId}/admin-keys/${keyId}`));
+        await loadAdminSecurity();
+        setAdminKeyFeedback("Chave revogada.", "success");
+      } catch (error) {
+        setAdminKeyFeedback(error.message, "error");
+      }
+    }
+
     async function openWhatsappSettings() {
       setError("");
       const empresaId = Number(empresaIdInput.value || 0);
@@ -2182,7 +2341,10 @@
         aiCredentialsListEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
         setAiFeedback(error.message, "error");
       });
-      await Promise.all([whatsappLoad, aiLoad]);
+      const securityLoad = loadAdminSecurity().catch((error) => {
+        setAdminKeyFeedback(error.message, "error");
+      });
+      await Promise.all([whatsappLoad, aiLoad, securityLoad]);
     }
 
     async function saveWhatsappSettings(event) {
@@ -2233,6 +2395,21 @@
       } finally {
         btnSaveWhatsapp.disabled = false;
         btnVerifyWhatsapp.disabled = false;
+      }
+    }
+
+    async function revokeWhatsappToken() {
+      const empresaId = Number(empresaIdInput.value || 0);
+      if (!window.confirm("Revogar o token da Meta? Os envios desta empresa serão interrompidos.")) return;
+      btnRevokeWhatsapp.disabled = true;
+      try {
+        await apiDelete(apiUrl(`empresas/${empresaId}/whatsapp/token`));
+        await loadWhatsappSettings();
+        setSettingsFeedback("Token revogado. Cadastre outro para retomar os envios.", "success");
+      } catch (error) {
+        setSettingsFeedback(error.message, "error");
+      } finally {
+        btnRevokeWhatsapp.disabled = false;
       }
     }
 
@@ -2297,6 +2474,13 @@
       setAiFeedback("");
       loadAiCredentials().catch((error) => setAiFeedback(error.message, "error"));
     });
+    adminKeyForm.addEventListener("submit", createAdminKey);
+    adminKeysListEl.addEventListener("click", handleAdminKeyAction);
+    btnRefreshAdminSecurity.addEventListener("click", () => {
+      setAdminKeyFeedback("");
+      loadAdminSecurity().catch((error) => setAdminKeyFeedback(error.message, "error"));
+    });
+    btnRevokeWhatsapp.addEventListener("click", revokeWhatsappToken);
     btnVerifyWhatsapp.addEventListener("click", () => {
       verifyWhatsappConnection().catch(() => {
         // O diálogo já apresenta o erro detalhado.

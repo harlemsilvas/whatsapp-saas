@@ -8,14 +8,40 @@ CREATE TABLE empresas (
   nome VARCHAR(255) NOT NULL,
   telefone VARCHAR(20),
   whatsapp_token TEXT,
+  whatsapp_token_ciphertext TEXT NULL,
+  whatsapp_token_iv VARCHAR(64) NULL,
+  whatsapp_token_auth_tag VARCHAR(64) NULL,
+  whatsapp_token_fingerprint VARCHAR(16) NULL,
+  whatsapp_token_rotated_at TIMESTAMPTZ NULL,
+  whatsapp_token_revoked_at TIMESTAMPTZ NULL,
   phone_number_id VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE empresas ADD CONSTRAINT ck_empresas_phone_number_id
+  CHECK (phone_number_id IS NULL OR phone_number_id ~ '^[0-9]+$');
+
+ALTER TABLE empresas ADD CONSTRAINT ck_empresas_whatsapp_token_encrypted
+  CHECK (
+    (whatsapp_token_ciphertext IS NULL
+      AND whatsapp_token_iv IS NULL
+      AND whatsapp_token_auth_tag IS NULL
+      AND whatsapp_token_fingerprint IS NULL)
+    OR
+    (whatsapp_token_ciphertext IS NOT NULL
+      AND whatsapp_token_iv IS NOT NULL
+      AND whatsapp_token_auth_tag IS NOT NULL
+      AND whatsapp_token_fingerprint IS NOT NULL)
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_empresas_phone_number_id
+  ON empresas (phone_number_id)
+  WHERE phone_number_id IS NOT NULL;
+
 -- Contatos (clientes dos seus clientes)
 CREATE TABLE contatos (
   id SERIAL PRIMARY KEY,
-  empresa_id INT REFERENCES empresas(id) ON DELETE CASCADE,
+  empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   nome VARCHAR(255),
   telefone VARCHAR(20) NOT NULL,
   tags TEXT[],
@@ -32,11 +58,11 @@ CREATE TABLE contatos (
 -- Mensagens
 CREATE TABLE mensagens (
   id SERIAL PRIMARY KEY,
-  empresa_id INT REFERENCES empresas(id) ON DELETE CASCADE,
-  contato_id INT REFERENCES contatos(id) ON DELETE CASCADE,
-  direcao VARCHAR(10), -- entrada | saida
+  empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  contato_id INT NOT NULL REFERENCES contatos(id) ON DELETE CASCADE,
+  direcao VARCHAR(10) NOT NULL, -- entrada | saida
   conteudo TEXT,
-  tipo VARCHAR(20) DEFAULT 'text',
+  tipo VARCHAR(20) NOT NULL DEFAULT 'text',
   lida_em TIMESTAMP NULL,
   wa_message_id VARCHAR(128) NULL,
   provider_status VARCHAR(30) NULL,
@@ -56,7 +82,7 @@ CREATE INDEX IF NOT EXISTS ix_mensagens_empresa_provider_status
 -- Fluxos automatizados
 CREATE TABLE fluxos (
   id SERIAL PRIMARY KEY,
-  empresa_id INT REFERENCES empresas(id) ON DELETE CASCADE,
+  empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   gatilho VARCHAR(100),
   resposta TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -132,6 +158,73 @@ CREATE TABLE outbox_messages (
 
 CREATE INDEX IF NOT EXISTS ix_outbox_messages_status_created_at
   ON outbox_messages (status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_contatos_id_empresa
+  ON contatos (id, empresa_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mensagens_id_empresa
+  ON mensagens (id, empresa_id);
+
+ALTER TABLE contatos ADD CONSTRAINT ck_contatos_atendimento_modo
+  CHECK (atendimento_modo IN ('bot', 'humano'));
+
+ALTER TABLE mensagens ADD CONSTRAINT ck_mensagens_direcao
+  CHECK (direcao IN ('entrada', 'saida'));
+
+ALTER TABLE webhook_events ADD CONSTRAINT ck_webhook_events_status
+  CHECK (status IN ('received', 'processing', 'processed', 'failed'));
+
+ALTER TABLE outbox_messages ADD CONSTRAINT ck_outbox_messages_status
+  CHECK (status IN ('pending', 'processing', 'failed', 'sent', 'dead'));
+
+ALTER TABLE mensagens ADD CONSTRAINT fk_mensagens_contato_tenant
+  FOREIGN KEY (contato_id, empresa_id) REFERENCES contatos (id, empresa_id);
+
+ALTER TABLE outbox_messages ADD CONSTRAINT fk_outbox_contato_tenant
+  FOREIGN KEY (contato_id, empresa_id) REFERENCES contatos (id, empresa_id);
+
+ALTER TABLE outbox_messages ADD CONSTRAINT fk_outbox_mensagem_tenant
+  FOREIGN KEY (mensagem_id, empresa_id) REFERENCES mensagens (id, empresa_id);
+
+CREATE TABLE admin_api_keys (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id INT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  label VARCHAR(100) NOT NULL,
+  key_hash VARCHAR(64) NOT NULL UNIQUE,
+  key_prefix VARCHAR(12) NOT NULL,
+  permissions TEXT[] NOT NULL DEFAULT ARRAY['read', 'write']::TEXT[],
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  expires_at TIMESTAMPTZ NULL,
+  last_used_at TIMESTAMPTZ NULL,
+  revoked_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_admin_api_key_scope
+    CHECK (empresa_id IS NOT NULL OR 'superadmin' = ANY(permissions)),
+  CONSTRAINT ck_admin_api_key_permissions CHECK (
+    cardinality(permissions) > 0
+    AND permissions <@ ARRAY['read', 'write', 'manage_keys', 'superadmin']::TEXT[]
+  )
+);
+
+CREATE INDEX IF NOT EXISTS ix_admin_api_keys_empresa
+  ON admin_api_keys (empresa_id, enabled);
+
+CREATE TABLE admin_audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id INT NULL REFERENCES empresas(id) ON DELETE SET NULL,
+  actor_type VARCHAR(30) NOT NULL,
+  actor_id BIGINT NULL REFERENCES admin_api_keys(id) ON DELETE SET NULL,
+  actor_label VARCHAR(100) NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(60) NOT NULL,
+  resource_id VARCHAR(100) NULL,
+  request_id VARCHAR(100) NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_admin_audit_empresa_created
+  ON admin_audit_logs (empresa_id, created_at DESC);
 
 -- Credenciais de IA criptografadas por empresa
 CREATE TABLE ai_provider_credentials (

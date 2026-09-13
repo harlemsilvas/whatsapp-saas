@@ -18,6 +18,9 @@
     "db:migrate:outbox": "node scripts/migrateOutboxMessages.js",
     "db:migrate:outbox:provider-status": "node scripts/migrateOutboxProviderStatus.js",
     "db:migrate:outbox:retry-hardening": "node scripts/migrateOutboxRetryHardening.js",
+    "db:migrate:tenant-security": "node scripts/migrateMultiTenantSecurity.js",
+    "db:verify:whatsapp-token-encryption": "node scripts/verifyWhatsappTokenEncryption.js",
+    "db:finalize:whatsapp-token-encryption": "node scripts/finalizeWhatsappTokenEncryption.js",
     "db:migrate:message-provider-status": "node scripts/migrateMessageProviderStatus.js",
     "db:migrate:ai-credentials": "node scripts/migrateAiProviderCredentials.js",
     "db:migrate:ai-multi-provider": "node scripts/migrateAiMultiProvider.js",
@@ -29,7 +32,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "axios": "^1.14.0",
+    "axios": "^1.20.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",

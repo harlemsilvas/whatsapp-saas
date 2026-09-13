@@ -303,11 +303,35 @@ npm run db:migrate:outbox:retry-hardening
 npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
 npm run db:migrate:ai-multi-provider
+npm run db:migrate:tenant-security
 ```
 
 Isso cria a tabela `outbox_messages`, habilita a correlação dos estados da Meta
 e aplica limite, classificação e backoff aos retries. Erros definitivos e itens
 que esgotam as tentativas ficam em `dead` até uma reabertura manual pelo painel.
+
+### Segurança multiempresa
+
+A migration de segurança adiciona unicidade ao `phone_number_id`, valida os
+vínculos de tenant, criptografa tokens da Meta com AES-256-GCM e cria chaves
+administrativas por empresa e auditoria. Ela faz o backfill mantendo o campo
+legado temporariamente para permitir rollback:
+
+```bash
+npm run db:migrate:tenant-security
+```
+
+Somente depois que API e worker novos estiverem saudáveis, remova o texto puro:
+
+```bash
+npm run db:verify:whatsapp-token-encryption
+npm run db:finalize:whatsapp-token-encryption
+```
+
+O `deploy.sh` executa essa sequência automaticamente e só finaliza depois do
+healthcheck e da verificação criptográfica. `CREDENTIALS_ENCRYPTION_KEY` deve
+permanecer estável; perdê-la impede descriptografar tokens WhatsApp e chaves de
+IA.
 
 ### Reprocessar eventos com falha
 
@@ -360,6 +384,11 @@ O painel está em:
 - `http://localhost:3000/api/admin/ui?key=SEU_ADMIN_API_KEY` (direto)
 
 Observação: o `?key=` é usado só para abrir a página no browser (ela remove do URL ao carregar). As chamadas de API usam `x-api-key`.
+
+Em `Configurações da empresa > Acesso administrativo`, o superadmin pode gerar
+uma chave limitada à empresa com perfil de leitura, operação ou gestão. O valor
+completo aparece uma única vez; o banco armazena somente SHA-256. A mesma tela
+permite revogar acessos e consultar ações administrativas recentes.
 
 ## Provedores de IA
 

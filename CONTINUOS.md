@@ -76,15 +76,48 @@ Depois do deploy, confirmar no painel:
 3. filtro `Encerradas` e botao `Reabrir e reenviar` visiveis;
 4. envio de uma mensagem real concluido como `sent` e entregue pela Meta.
 
+## Sprint 5 - multiempresa seguro
+
+Implementacao local concluida em 13 de setembro de 2026:
+
+- `phone_number_id` unico e restrito a digitos;
+- FKs compostas impedem contato ou mensagem de outra empresa na outbox;
+- campos centrais de tenant, direcao e tipo receberam integridade obrigatoria;
+- token WhatsApp criptografado com AES-256-GCM e fingerprint seguro;
+- migracao em duas fases preserva rollback ate API e worker passarem no health;
+- rotacao e revogacao do token disponiveis no painel;
+- chaves administrativas persistidas somente por hash SHA-256;
+- chaves limitadas por empresa e permissoes `read`, `write` e `manage_keys`;
+- `ADMIN_API_KEY` do `.env` preservada como superadmin de bootstrap;
+- auditoria automatica de mutacoes bem-sucedidas e tentativas de acesso
+  cruzado negadas, sem corpo ou segredo;
+- painel permite emitir/revogar acessos e consultar auditoria recente;
+- migration expansiva executada duas vezes e finalizacao validada no PostgreSQL
+  local;
+- `axios` e dependencias transitivas atualizadas; `npm audit` sem
+  vulnerabilidades de producao ou desenvolvimento;
+- 20 suites e 87 testes aprovados na validacao final.
+
+Deploy pendente. A VPS ja deve possuir a mesma
+`CREDENTIALS_ENCRYPTION_KEY` usada nas credenciais de IA. O `deploy.sh` aplica
+`db:migrate:tenant-security`, reinicia os processos, espera o healthcheck e
+somente entao executa `db:finalize:whatsapp-token-encryption`.
+Antes da finalizacao, `db:verify:whatsapp-token-encryption` confirma que a chave
+mestra descriptografa todos os tokens e que os fingerprints conferem.
+
+Validacoes obrigatorias depois do deploy:
+
+1. API e worker online no PM2;
+2. conexao WhatsApp da empresa `1` validada sem recadastrar o token;
+3. coluna legada sem valores e colunas criptografadas preenchidas;
+4. mensagem real recebida, tratada e entregue;
+5. chave de tenant criada no painel e bloqueada ao trocar a empresa da URL;
+6. rotacao/revogacao e auditoria conferidas com uma chave de teste.
+
 ### Marco seguinte
 
-Depois da Sprint 3.1, retomar o hardening multiempresa da Sprint 5:
-
-- criptografar `empresas.whatsapp_token` em repouso;
-- adicionar unicidade para `phone_number_id`;
-- implementar auditoria administrativa e autorizacao por empresa;
-- implementar a rotina de saude, expiracao e alertas de credenciais registrada
-  em `FEATURES.md`.
+Depois do deploy da Sprint 5, implementar a rotina de saude, expiracao e
+alertas de credenciais registrada em `FEATURES.md`.
 
 ## Multi-provedor de IA - 10 de setembro de 2026
 

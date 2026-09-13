@@ -86,8 +86,8 @@ barra de enderecos e usa a chave no header `x-api-key` nas chamadas seguintes.
 1. Abra o painel e mantenha `Empresa ID` igual a `1` enquanto houver apenas uma
    empresa cadastrada.
 2. Use `Configurar WhatsApp` para informar o `Phone Number ID` e o token. O
-   painel valida as credenciais na Meta antes de gravar e nunca exibe o token
-   armazenado.
+   painel valida as credenciais na Meta antes de gravar, criptografa o token e
+   nunca exibe o valor armazenado. Use `Revogar token` para interromper o uso.
 3. Clique em uma conversa para visualizar as mensagens recebidas e enviadas.
 4. Confira o estado do contato. Se estiver em atendimento humano ou pausado,
    use `Devolver para o bot` antes do teste automatico.
@@ -98,6 +98,11 @@ barra de enderecos e usa a chave no header `x-api-key` nas chamadas seguintes.
    o motivo terminal e usar `Reabrir e reenviar` pelo próprio painel.
 7. O campo de envio do painel cria uma mensagem manual. Esse teste valida
    banco, outbox, worker e Graph API, mas nao valida o webhook nem a IA.
+8. Em `Acesso administrativo`, gere chaves específicas por empresa. Prefira o
+   perfil `Operação` no uso diário e mantenha a chave global somente para
+   bootstrap e manutenção de superadmin.
+9. Consulte `Auditoria recente` para conferir alterações bem-sucedidas. Corpos
+   de requisição, tokens e chaves nunca são copiados para o log de auditoria.
 
 ## Atualizar o token da Meta
 
@@ -299,6 +304,7 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 NVIDIA_API_KEY=CHAVE_NVIDIA
 NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
+REQUIRE_CREDENTIALS_ENCRYPTION_KEY=true
 AI_MAX_CREDENTIAL_ATTEMPTS=3
 WEBHOOK_WORKER_STATUSES=failed
 OUTBOX_MAX_ATTEMPTS=8

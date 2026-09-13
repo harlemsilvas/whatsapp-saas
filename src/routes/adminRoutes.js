@@ -7,7 +7,7 @@ const conversaController = require("../controllers/adminConversaController");
 // UI (permite passar key via query param para abrir no browser)
 router.get(
   "/ui",
-  apiKeyAuth({ queryParamName: "key" }),
+  apiKeyAuth({ queryParamName: "key", allowUnscopedTenant: true }),
   adminUiController.adminUi,
 );
 

@@ -2,6 +2,7 @@ const router = require("express").Router();
 
 const controller = require("../controllers/empresaController");
 const aiCredentialController = require("../controllers/aiCredentialController");
+const adminSecurityController = require("../controllers/adminSecurityController");
 
 router.get("/", controller.listar);
 router.post("/", controller.criar);
@@ -10,9 +11,18 @@ router.get("/:id", controller.obter);
 // WhatsApp credentials (admin)
 router.put("/:id/whatsapp", controller.atualizarWhatsApp);
 router.post("/:id/whatsapp/verify", controller.verificarWhatsApp);
+router.delete("/:id/whatsapp/token", controller.revogarWhatsApp);
 
 // Onboarding helper
 router.get("/:id/onboarding", controller.onboarding);
+
+router.get("/:id/admin-keys", adminSecurityController.listarChaves);
+router.post("/:id/admin-keys", adminSecurityController.criarChave);
+router.delete(
+  "/:id/admin-keys/:keyId",
+  adminSecurityController.revogarChave,
+);
+router.get("/:id/audit", adminSecurityController.listarAuditoria);
 
 // Configuracao de IA por empresa (segredos nunca retornam pela API).
 router.get("/:id/ai/credentials", aiCredentialController.listar);

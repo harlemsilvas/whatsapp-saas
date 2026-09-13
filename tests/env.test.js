@@ -35,10 +35,25 @@ describe("env.validate", () => {
     process.env.REQUIRE_VERIFY_TOKEN = "0";
     process.env.REQUIRE_WHATSAPP_WEBHOOK_SIGNATURE = "0";
     process.env.REQUIRE_ADMIN_API_KEY = "0";
+    process.env.REQUIRE_CREDENTIALS_ENCRYPTION_KEY = "0";
     delete process.env.ADMIN_API_KEY;
 
     const env = require("../src/config/env");
 
     expect(() => env.validate()).not.toThrow();
+  });
+
+  test("exige chave mestra válida em produção", () => {
+    process.env.NODE_ENV = "production";
+    process.env.REQUIRE_DB_ENV = "0";
+    process.env.REQUIRE_WHATSAPP_ENV = "0";
+    process.env.REQUIRE_VERIFY_TOKEN = "0";
+    process.env.REQUIRE_WHATSAPP_WEBHOOK_SIGNATURE = "0";
+    process.env.REQUIRE_ADMIN_API_KEY = "0";
+    delete process.env.CREDENTIALS_ENCRYPTION_KEY;
+
+    const env = require("../src/config/env");
+
+    expect(() => env.validate()).toThrow(/CREDENTIALS_ENCRYPTION_KEY/);
   });
 });

@@ -59,6 +59,7 @@ npm run db:migrate:outbox:retry-hardening
 npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
 npm run db:migrate:ai-multi-provider
+npm run db:migrate:tenant-security
 
 command -v pm2 >/dev/null 2>&1 || { echo "pm2 nao encontrado no PATH"; exit 1; }
 mkdir -p /home/whatsapp/logs
@@ -85,6 +86,12 @@ fi
 
 echo ">> Status"
 pm2 status
+
+echo ">> Validando descriptografia dos tokens WhatsApp..."
+npm run db:verify:whatsapp-token-encryption
+
+echo ">> Removendo tokens WhatsApp do campo legado após healthcheck..."
+npm run db:finalize:whatsapp-token-encryption
 
 trap - ERR
 echo "=== Deploy concluido com sucesso ==="

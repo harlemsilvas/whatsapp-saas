@@ -3,18 +3,33 @@ const axios = require("axios");
 
 function sanitizeEmpresa(empresa) {
   if (!empresa) return empresa;
-  const token = empresa.whatsapp_token
-    ? String(empresa.whatsapp_token).trim()
-    : "";
-  const tokenLen = token ? token.length : 0;
+  const tokenConfigured = Boolean(
+    (empresa.whatsapp_token && String(empresa.whatsapp_token).trim()) ||
+      empresa.whatsapp_token_ciphertext,
+  );
 
   const sanitized = { ...empresa };
   delete sanitized.whatsapp_token;
+  delete sanitized.whatsapp_token_ciphertext;
+  delete sanitized.whatsapp_token_iv;
+  delete sanitized.whatsapp_token_auth_tag;
 
-  sanitized.whatsapp_token_configured = tokenLen > 0;
-  sanitized.whatsapp_token_len = tokenLen > 0 ? tokenLen : null;
-
+  sanitized.whatsapp_token_configured = tokenConfigured;
   return sanitized;
+}
+
+function handleEmpresaConstraint(err, res) {
+  if (err?.code === "23505") {
+    res.status(409).json({
+      error: "Este Phone Number ID já pertence a outra empresa",
+    });
+    return true;
+  }
+  if (err?.code === "23514") {
+    res.status(400).json({ error: "Phone Number ID inválido" });
+    return true;
+  }
+  return false;
 }
 
 function toStringOrNull(value) {
@@ -92,6 +107,7 @@ exports.criar = async (req, res, next) => {
     });
     res.status(201).json(sanitizeEmpresa(empresa));
   } catch (err) {
+    if (handleEmpresaConstraint(err, res)) return;
     next(err);
   }
 };
@@ -108,6 +124,7 @@ exports.atualizar = async (req, res, next) => {
 
     res.json(sanitizeEmpresa(empresa));
   } catch (err) {
+    if (handleEmpresaConstraint(err, res)) return;
     next(err);
   }
 };
@@ -116,6 +133,11 @@ exports.remover = async (req, res, next) => {
   try {
     const id = toInt(req.params.id);
     if (!id) return res.status(400).json({ error: "id inválido" });
+    if (!req.adminActor?.permissions?.includes("superadmin")) {
+      return res.status(403).json({
+        error: "A exclusão da empresa exige permissão de superadmin",
+      });
+    }
 
     const removed = await Empresa.remove(id);
     if (!removed)
@@ -240,6 +262,23 @@ exports.atualizarWhatsApp = async (req, res, next) => {
       empresa: sanitizeEmpresa(updated),
       verified,
     });
+  } catch (err) {
+    if (handleEmpresaConstraint(err, res)) return;
+    next(err);
+  }
+};
+
+exports.revogarWhatsApp = async (req, res, next) => {
+  try {
+    const id = toInt(req.params.id);
+    if (!id) return res.status(400).json({ error: "id inválido" });
+
+    const empresa = await Empresa.findById(id);
+    if (!empresa)
+      return res.status(404).json({ error: "Empresa não encontrada" });
+
+    const updated = await Empresa.revokeWhatsappToken(id);
+    return res.json({ ok: true, empresa: sanitizeEmpresa(updated) });
   } catch (err) {
     next(err);
   }
