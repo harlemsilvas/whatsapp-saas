@@ -98,26 +98,24 @@ Implementacao local concluida em 13 de setembro de 2026:
   vulnerabilidades de producao ou desenvolvimento;
 - 20 suites e 87 testes aprovados na validacao final.
 
-Deploy pendente. A VPS ja deve possuir a mesma
-`CREDENTIALS_ENCRYPTION_KEY` usada nas credenciais de IA. O `deploy.sh` aplica
-`db:migrate:tenant-security`, reinicia os processos, espera o healthcheck e
-somente entao executa `db:finalize:whatsapp-token-encryption`.
-Antes da finalizacao, `db:verify:whatsapp-token-encryption` confirma que a chave
-mestra descriptografa todos os tokens e que os fingerprints conferem.
+Deploy concluido em 13 de setembro de 2026 pelo GitHub Actions, release
+`50d5126`. A CI aprovou 20 suites e 87 testes. Na VPS, o `deploy.sh` aplicou
+`db:migrate:tenant-security`, copiou um token legado para AES-256-GCM,
+reiniciou API e worker, aprovou o healthcheck, validou a descriptografia e o
+fingerprint e somente entao removeu o token da coluna legada. API e worker
+ficaram `online`, e `https://bot.hrmmotos.com.br/` respondeu normalmente.
 
-Validacoes obrigatorias depois do deploy:
+Validacoes operacionais seguintes:
 
-1. API e worker online no PM2;
-2. conexao WhatsApp da empresa `1` validada sem recadastrar o token;
-3. coluna legada sem valores e colunas criptografadas preenchidas;
-4. mensagem real recebida, tratada e entregue;
-5. chave de tenant criada no painel e bloqueada ao trocar a empresa da URL;
-6. rotacao/revogacao e auditoria conferidas com uma chave de teste.
+1. conexao WhatsApp da empresa `1` validada sem recadastrar o token;
+2. mensagem real recebida, tratada e entregue;
+3. chave de tenant criada no painel e bloqueada ao trocar a empresa da URL;
+4. rotacao/revogacao e auditoria conferidas com uma chave de teste.
 
 ### Marco seguinte
 
-Depois do deploy da Sprint 5, implementar a rotina de saude, expiracao e
-alertas de credenciais registrada em `FEATURES.md`.
+Implementar a rotina de saude, expiracao e alertas de credenciais registrada
+em `FEATURES.md`.
 
 ## Multi-provedor de IA - 10 de setembro de 2026
 
