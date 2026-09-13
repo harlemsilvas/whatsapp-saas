@@ -47,6 +47,58 @@ describe("OutboxMessage provider status reconciliation", () => {
     expect(anotherEvent).not.toBe(first);
   });
 
+  test("persiste apenas opções não sensíveis no payload", async () => {
+    const query = jest.fn(async () => ({ rows: [{ id: 1, inserted: true }] }));
+    jest.doMock("../src/config/database", () => ({ query }));
+    const OutboxMessage = require("../src/models/OutboxMessage");
+
+    await OutboxMessage.createPending({
+      empresaId: 1,
+      contatoId: 10,
+      to: "5511999999999",
+      content: "Mensagem",
+      options: {
+        useEnvWhatsApp: false,
+        token: "segredo",
+        phoneId: "PHONE_ID",
+      },
+    });
+
+    expect(query.mock.calls[0][1][9]).toBe('{"useEnvWhatsApp":false}');
+  });
+
+  test("reabertura manual limpa estado terminal e registra auditoria", async () => {
+    const query = jest.fn(async () => ({
+      rows: [{ id: 7, status: "pending" }],
+    }));
+    jest.doMock("../src/config/database", () => ({ query }));
+    const OutboxMessage = require("../src/models/OutboxMessage");
+
+    await OutboxMessage.resetForRetry(7);
+
+    const sql = query.mock.calls[0][0];
+    expect(sql).toContain("attempt_count = 0");
+    expect(sql).toContain("manual_retry_count = manual_retry_count + 1");
+    expect(sql).toContain("last_manual_retry_at = NOW()");
+    expect(sql).toContain("dead_at = NULL");
+    expect(sql).toContain("lease_expires_at >= NOW()");
+  });
+
+  test("claim respeita o limite máximo de tentativas", async () => {
+    const query = jest.fn(async () => ({ rows: [] }));
+    jest.doMock("../src/config/database", () => ({ query }));
+    const OutboxMessage = require("../src/models/OutboxMessage");
+
+    await OutboxMessage.markProcessing(9, {
+      leaseToken: "lease-9",
+      leaseSeconds: 60,
+      maxAttempts: 8,
+    });
+
+    expect(query.mock.calls[0][0]).toContain("attempt_count < $4");
+    expect(query.mock.calls[0][1]).toEqual([9, "lease-9", 60, 8]);
+  });
+
   test("atualiza outbox e mensagem associada na mesma transação", async () => {
     const current = {
       id: 9,

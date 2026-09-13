@@ -93,8 +93,9 @@ barra de enderecos e usa a chave no header `x-api-key` nas chamadas seguintes.
    use `Devolver para o bot` antes do teste automatico.
 5. Use `Debug` para conferir `suppressReasonNow`, credenciais do WhatsApp,
    ultima entrada, ultima saida e itens recentes da outbox.
-6. Use a visao global da outbox para filtrar `pending`, `processing`, `failed`
-   e `sent`. Um item `failed` pode ser reenviado pelo proprio painel.
+6. Use a visao global da outbox para filtrar `pending`, `processing`, `failed`,
+   `dead` e `sent`. `failed` ainda terá retry automático; `dead` exige revisar
+   o motivo terminal e usar `Reabrir e reenviar` pelo próprio painel.
 7. O campo de envio do painel cria uma mensagem manual. Esse teste valida
    banco, outbox, worker e Graph API, mas nao valida o webhook nem a IA.
 
@@ -300,6 +301,10 @@ NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
 AI_MAX_CREDENTIAL_ATTEMPTS=3
 WEBHOOK_WORKER_STATUSES=failed
+OUTBOX_MAX_ATTEMPTS=8
+OUTBOX_RETRY_BASE_SECONDS=30
+OUTBOX_RETRY_MAX_SECONDS=3600
+OUTBOX_RETRY_JITTER_RATIO=0.2
 ```
 
 Antes do primeiro cadastro de chave pelo painel, gere uma chave mestra uma

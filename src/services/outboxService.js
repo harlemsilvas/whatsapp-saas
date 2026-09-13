@@ -4,6 +4,54 @@ const OutboxMessage = require("../models/OutboxMessage");
 const logger = require("../utils/logger");
 const whatsappService = require("./whatsappService");
 
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 130429, 131048, 131056]);
+
+function positiveInteger(value, fallback) {
+  return Math.max(1, Math.trunc(Number(value) || fallback));
+}
+
+function getMaxAttempts() {
+  return positiveInteger(process.env.OUTBOX_MAX_ATTEMPTS, 8);
+}
+
+function classifyOutboxError(err) {
+  const graph = err?.response?.data?.error || err?.whatsappGraph || {};
+  const status = Number(err?.response?.status || 0) || null;
+  const graphCode = Number(graph?.code || 0) || null;
+  const rawCode = graphCode || err?.code || status || "unknown";
+  const code = String(rawCode).slice(0, 80);
+
+  if (status === 429 || RATE_LIMIT_CODES.has(graphCode)) {
+    return { errorClass: "rate_limit", errorCode: code, retryable: true };
+  }
+
+  if (!status || [408, 425].includes(status) || status >= 500) {
+    return { errorClass: "transient", errorCode: code, retryable: true };
+  }
+
+  if (status >= 400 && status < 500) {
+    return { errorClass: "permanent", errorCode: code, retryable: false };
+  }
+
+  return { errorClass: "transient", errorCode: code, retryable: true };
+}
+
+function calculateBackoffSeconds(attemptCount, random = Math.random) {
+  const base = positiveInteger(process.env.OUTBOX_RETRY_BASE_SECONDS, 30);
+  const max = Math.max(
+    base,
+    positiveInteger(process.env.OUTBOX_RETRY_MAX_SECONDS, 3600),
+  );
+  const ratio = Math.min(
+    0.5,
+    Math.max(0, Number(process.env.OUTBOX_RETRY_JITTER_RATIO ?? 0.2) || 0),
+  );
+  const attempt = positiveInteger(attemptCount, 1);
+  const exponential = Math.min(max, base * 2 ** Math.max(0, attempt - 1));
+  const jitter = 1 + (Number(random()) * 2 - 1) * ratio;
+  return Math.max(1, Math.min(max, Math.round(exponential * jitter)));
+}
+
 function maskPhone(value) {
   if (!value) return "<missing>";
   const s = String(value);
@@ -68,8 +116,14 @@ async function maybeSendReengagementTemplate({
   };
 }
 
-async function deliverOutboxMessage(record, { leaseSeconds = 60 } = {}) {
-  const claimed = await OutboxMessage.markProcessing(record.id, { leaseSeconds });
+async function deliverOutboxMessage(
+  record,
+  { leaseSeconds = 60, maxAttempts = getMaxAttempts() } = {},
+) {
+  const claimed = await OutboxMessage.markProcessing(record.id, {
+    leaseSeconds,
+    maxAttempts,
+  });
   if (!claimed) return { skipped: true };
 
   const payload = claimed.payload_json || {};
@@ -79,8 +133,8 @@ async function deliverOutboxMessage(record, { leaseSeconds = 60 } = {}) {
   try {
     const options = {};
     if (!useEnvWhatsApp) {
-      options.token = payload.token || empresa?.whatsapp_token || null;
-      options.phoneId = payload.phoneId || empresa?.phone_number_id || null;
+      options.token = empresa?.whatsapp_token || null;
+      options.phoneId = empresa?.phone_number_id || null;
     }
 
     const data = await whatsappService.enviarMensagem(
@@ -103,11 +157,29 @@ async function deliverOutboxMessage(record, { leaseSeconds = 60 } = {}) {
     return { skipped: false, sent: true };
   } catch (err) {
     if (err?.whatsappReason === "outside_24h_window") {
-      const templateResult = await maybeSendReengagementTemplate({
-        recipient: claimed.recipient,
-        empresa,
-        useEnvWhatsApp,
-      }).catch(async (templateErr) => {
+      try {
+        const templateResult = await maybeSendReengagementTemplate({
+          recipient: claimed.recipient,
+          empresa,
+          useEnvWhatsApp,
+        });
+
+        await setBotStatusSafe(claimed.empresa_id, claimed.contato_id, {
+          reason: "outside_24h_window",
+          details: {
+            graph: err?.whatsappGraph || null,
+            template: templateResult,
+          },
+        });
+
+        await OutboxMessage.markSent(
+          claimed.id,
+          templateResult?.providerMessageId || null,
+          claimed.lease_token || null,
+        );
+
+        return { skipped: false, sent: true, usedTemplate: true };
+      } catch (templateErr) {
         await setBotStatusSafe(claimed.empresa_id, claimed.contato_id, {
           reason: "outside_24h_window",
           details: {
@@ -119,29 +191,31 @@ async function deliverOutboxMessage(record, { leaseSeconds = 60 } = {}) {
             },
           },
         });
-        throw templateErr;
-      });
-
-      await setBotStatusSafe(claimed.empresa_id, claimed.contato_id, {
-        reason: "outside_24h_window",
-        details: {
-          graph: err?.whatsappGraph || null,
-          template: templateResult,
-        },
-      });
-
-      await OutboxMessage.markSent(
-        claimed.id,
-        templateResult?.providerMessageId || null,
-        claimed.lease_token || null,
-      );
-
-      return { skipped: false, sent: true, usedTemplate: true };
+        err = templateErr;
+      }
     }
 
-    await OutboxMessage.markFailed(claimed.id, err, {
-      leaseToken: claimed.lease_token || null,
-    });
+    const classification = classifyOutboxError(err);
+    const exhausted = Number(claimed.attempt_count || 0) >= maxAttempts;
+    const terminalReason = exhausted
+      ? "max_attempts_exceeded"
+      : `permanent_error_${classification.errorCode}`;
+
+    if (!classification.retryable || exhausted) {
+      await OutboxMessage.markDead(claimed.id, err, {
+        leaseToken: claimed.lease_token || null,
+        errorClass: classification.errorClass,
+        errorCode: classification.errorCode,
+        terminalReason,
+      });
+    } else {
+      await OutboxMessage.markFailed(claimed.id, err, {
+        leaseToken: claimed.lease_token || null,
+        backoffSeconds: calculateBackoffSeconds(claimed.attempt_count),
+        errorClass: classification.errorClass,
+        errorCode: classification.errorCode,
+      });
+    }
 
     logger.error("Falha ao enviar outbox_message", {
       outboxId: claimed.id,
@@ -151,27 +225,41 @@ async function deliverOutboxMessage(record, { leaseSeconds = 60 } = {}) {
       message: err?.message || String(err),
       code: err?.code || null,
       whatsappReason: err?.whatsappReason || null,
+      errorClass: classification.errorClass,
+      errorCode: classification.errorCode,
+      terminal: !classification.retryable || exhausted,
     });
 
-    return { skipped: false, sent: false, failed: true };
+    return {
+      skipped: false,
+      sent: false,
+      failed: !classification.retryable || exhausted ? false : true,
+      dead: !classification.retryable || exhausted,
+    };
   }
 }
 
 async function processOutboxBatch({ limit = 20, leaseSeconds = 60 } = {}) {
-  const items = await OutboxMessage.listRetryable({ limit });
+  const maxAttempts = getMaxAttempts();
+  const items = await OutboxMessage.listRetryable({ limit, maxAttempts });
   const summary = {
     scanned: items.length,
     claimed: 0,
     sent: 0,
     failed: 0,
+    dead: 0,
   };
 
   for (const item of items) {
-    const result = await deliverOutboxMessage(item, { leaseSeconds });
+    const result = await deliverOutboxMessage(item, {
+      leaseSeconds,
+      maxAttempts,
+    });
     if (result?.skipped) continue;
     summary.claimed += 1;
     if (result?.sent) summary.sent += 1;
     if (result?.failed) summary.failed += 1;
+    if (result?.dead) summary.dead += 1;
   }
 
   return summary;
@@ -205,7 +293,10 @@ async function retryOutboxMessageById(outboxId, { leaseSeconds = 60 } = {}) {
     return { notRetryable: true, reason: "reset_failed", record: current };
   }
 
-  const result = await deliverOutboxMessage(reopened, { leaseSeconds });
+  const result = await deliverOutboxMessage(reopened, {
+    leaseSeconds,
+    maxAttempts: getMaxAttempts(),
+  });
   return { ...result, record: reopened };
 }
 
@@ -213,4 +304,6 @@ module.exports = {
   deliverOutboxMessage,
   processOutboxBatch,
   retryOutboxMessageById,
+  calculateBackoffSeconds,
+  classifyOutboxError,
 };

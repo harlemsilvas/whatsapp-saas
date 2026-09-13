@@ -51,8 +51,6 @@ async function enqueueOutgoingTextMessage({
         to: sendTo,
         content: responseText,
         options: {
-          token: useEnvWhatsApp ? null : empresa?.whatsapp_token || null,
-          phoneId: useEnvWhatsApp ? null : empresa?.phone_number_id || null,
           useEnvWhatsApp: Boolean(useEnvWhatsApp),
         },
       },

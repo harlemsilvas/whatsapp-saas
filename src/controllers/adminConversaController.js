@@ -26,6 +26,18 @@ function safeJsonParse(value) {
   }
 }
 
+function sanitizeOutboxRecord(record) {
+  if (!record) return record;
+  const {
+    payload_json: _payloadJson,
+    lease_token: _leaseToken,
+    lease_expires_at: _leaseExpiresAt,
+    provider_status_payload: _providerStatusPayload,
+    ...safeRecord
+  } = record;
+  return safeRecord;
+}
+
 exports.listarConversas = async (req, res, next) => {
   try {
     const empresaId = toInt(req.params.empresaId);
@@ -71,7 +83,7 @@ exports.listarOutbox = async (req, res, next) => {
     res.json({
       empresa: { id: empresa.id, nome: empresa.nome || null },
       summary,
-      items,
+      items: items.map(sanitizeOutboxRecord),
     });
   } catch (err) {
     next(err);
@@ -122,9 +134,10 @@ exports.retryOutbox = async (req, res, next) => {
       result: {
         sent: Boolean(result?.sent),
         failed: Boolean(result?.failed),
+        dead: Boolean(result?.dead),
         usedTemplate: Boolean(result?.usedTemplate),
       },
-      item: updated || record,
+      item: sanitizeOutboxRecord(updated || record),
     });
   } catch (err) {
     next(err);

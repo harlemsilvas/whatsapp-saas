@@ -3,6 +3,7 @@ const db = require("../config/database");
 
 const DEFAULT_LEASE_SECONDS = 60;
 const DEFAULT_BACKOFF_SECONDS = 30;
+const DEFAULT_MAX_ATTEMPTS = 8;
 const PROVIDER_STATUS_RANK = {
   sent: 1,
   delivered: 2,
@@ -56,6 +57,10 @@ function buildDedupKey({
     .digest("hex");
 
   return `${channel}:${empresaId}:${originType || "legacy"}:${hash}`;
+}
+
+function sanitizePayload(options) {
+  return { useEnvWhatsApp: Boolean(options?.useEnvWhatsApp) };
 }
 
 exports.createPending = async (
@@ -113,7 +118,7 @@ exports.createPending = async (
       messageType,
       to,
       content,
-      JSON.stringify(options || {}),
+      JSON.stringify(sanitizePayload(options)),
     ],
   );
 
@@ -135,12 +140,20 @@ exports.buildDedupKey = buildDedupKey;
 
 exports.markProcessing = async (
   outboxId,
-  { leaseToken = null, leaseSeconds = DEFAULT_LEASE_SECONDS } = {},
+  {
+    leaseToken = null,
+    leaseSeconds = DEFAULT_LEASE_SECONDS,
+    maxAttempts = DEFAULT_MAX_ATTEMPTS,
+  } = {},
 ) => {
   const token = String(leaseToken || crypto.randomUUID()).trim();
   const seconds = Math.max(
     5,
     Math.trunc(Number(leaseSeconds) || DEFAULT_LEASE_SECONDS),
+  );
+  const attempts = Math.max(
+    1,
+    Math.trunc(Number(maxAttempts) || DEFAULT_MAX_ATTEMPTS),
   );
 
   const result = await db.query(
@@ -158,8 +171,9 @@ exports.markProcessing = async (
          OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at < NOW()))
        )
        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+       AND attempt_count < $4
      RETURNING *`,
-    [outboxId, token, seconds],
+    [outboxId, token, seconds, attempts],
   );
 
   return result.rows[0] ? { ...result.rows[0], lease_token: token } : null;
@@ -210,10 +224,12 @@ exports.markFailed = async (
   {
     leaseToken = null,
     backoffSeconds = DEFAULT_BACKOFF_SECONDS,
+    errorClass = "transient",
+    errorCode = null,
   } = {},
 ) => {
   const seconds = Math.max(
-    DEFAULT_BACKOFF_SECONDS,
+    1,
     Math.trunc(Number(backoffSeconds) || DEFAULT_BACKOFF_SECONDS),
   );
   const message = err?.message ? String(err.message).trim() : String(err || "");
@@ -226,25 +242,75 @@ exports.markFailed = async (
        lease_expires_at = NULL,
        next_retry_at = NOW() + make_interval(secs => $3),
        last_error = $2,
+       error_class = $5,
+       last_error_code = $6,
+       terminal_reason = NULL,
+       dead_at = NULL,
        processed_at = NOW()
      WHERE id = $1
        AND ($4::varchar IS NULL OR lease_token = $4)
      RETURNING *`,
-    [outboxId, message || null, seconds, leaseToken],
+    [outboxId, message || null, seconds, leaseToken, errorClass, errorCode],
   );
   return result.rows[0];
 };
 
-exports.listRetryable = async ({ limit = 20 } = {}) => {
+exports.markDead = async (
+  outboxId,
+  err,
+  {
+    leaseToken = null,
+    errorClass = "permanent",
+    errorCode = null,
+    terminalReason = "permanent_error",
+  } = {},
+) => {
+  const message = err?.message ? String(err.message).trim() : String(err || "");
+  const result = await db.query(
+    `UPDATE outbox_messages
+     SET
+       status = 'dead',
+       lease_token = NULL,
+       lease_expires_at = NULL,
+       next_retry_at = NULL,
+       last_error = $2,
+       error_class = $4,
+       last_error_code = $5,
+       terminal_reason = $6,
+       dead_at = NOW(),
+       processed_at = NOW()
+     WHERE id = $1
+       AND ($3::varchar IS NULL OR lease_token = $3)
+     RETURNING *`,
+    [
+      outboxId,
+      message || null,
+      leaseToken,
+      errorClass,
+      errorCode,
+      terminalReason,
+    ],
+  );
+  return result.rows[0] || null;
+};
+
+exports.listRetryable = async (
+  { limit = 20, maxAttempts = DEFAULT_MAX_ATTEMPTS } = {},
+) => {
+  const attempts = Math.max(
+    1,
+    Math.trunc(Number(maxAttempts) || DEFAULT_MAX_ATTEMPTS),
+  );
   const result = await db.query(
     `SELECT *
      FROM outbox_messages
      WHERE status = ANY($1::varchar[])
        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
        AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+       AND attempt_count < $3
      ORDER BY created_at ASC
      LIMIT $2`,
-    [["pending", "failed"], limit],
+    [["pending", "failed"], limit, attempts],
   );
   return result.rows;
 };
@@ -269,9 +335,21 @@ exports.resetForRetry = async (outboxId) => {
        lease_expires_at = NULL,
        next_retry_at = NOW(),
        processed_at = NULL,
-       last_error = NULL
+       last_error = NULL,
+       error_class = NULL,
+       last_error_code = NULL,
+       terminal_reason = NULL,
+       dead_at = NULL,
+       attempt_count = 0,
+       manual_retry_count = manual_retry_count + 1,
+       last_manual_retry_at = NOW()
      WHERE id = $1
        AND status <> 'sent'
+       AND NOT (
+         status = 'processing'
+         AND lease_expires_at IS NOT NULL
+         AND lease_expires_at >= NOW()
+       )
      RETURNING *`,
     [outboxId],
   );
@@ -302,6 +380,7 @@ exports.summaryByEmpresaId = async (empresaId) => {
        COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
        COUNT(*) FILTER (WHERE status = 'processing')::int AS processing,
        COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+       COUNT(*) FILTER (WHERE status = 'dead')::int AS dead,
        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent
      FROM outbox_messages
      WHERE empresa_id = $1`,
@@ -312,6 +391,7 @@ exports.summaryByEmpresaId = async (empresaId) => {
     pending: 0,
     processing: 0,
     failed: 0,
+    dead: 0,
     sent: 0,
   };
 };

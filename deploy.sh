@@ -55,6 +55,7 @@ npm run db:migrate:webhook-events
 npm run db:migrate:webhook-events:retry-lease
 npm run db:migrate:outbox
 npm run db:migrate:outbox:provider-status
+npm run db:migrate:outbox:retry-hardening
 npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
 npm run db:migrate:ai-multi-provider

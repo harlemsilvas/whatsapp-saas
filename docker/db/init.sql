@@ -120,6 +120,12 @@ CREATE TABLE outbox_messages (
   lease_token VARCHAR(64) NULL,
   lease_expires_at TIMESTAMP NULL,
   last_error TEXT NULL,
+  error_class VARCHAR(20) NULL,
+  last_error_code VARCHAR(80) NULL,
+  terminal_reason VARCHAR(80) NULL,
+  dead_at TIMESTAMP NULL,
+  manual_retry_count INT NOT NULL DEFAULT 0,
+  last_manual_retry_at TIMESTAMP NULL,
   processed_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

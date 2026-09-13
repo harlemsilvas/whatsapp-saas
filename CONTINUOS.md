@@ -2,6 +2,90 @@
 
 Data da decisão: 7 de setembro de 2026.
 
+## Fechamento do fluxo ponta a ponta - 12 de setembro de 2026
+
+O fluxo principal do gateway foi validado na VPS:
+
+1. a Meta entrega a mensagem no webhook assinado;
+2. o evento e a mensagem de entrada sao persistidos;
+3. a empresa e o contato sao identificados;
+4. a IA responde com credencial criptografada da empresa;
+5. a mensagem de saida entra na outbox;
+6. o worker envia pela Graph API;
+7. os estados de entrega retornam ao painel.
+
+Gemini responde como provedor primario com `gemini-3.5-flash-lite`. NVIDIA foi
+validada como fallback com `nvidia/nemotron-3.5-lightning-30b-a3b`. A validacao
+de novas credenciais agora executa uma inferencia curta, evitando aceitar um
+modelo que apareca no catalogo mas nao funcione em `chat/completions`.
+
+Estado operacional confirmado:
+
+- commit `89e65d1` implantado com CI aprovada;
+- 17 suites e 61 testes aprovados;
+- `NODE_ENV=production`;
+- assinatura da Meta obrigatoria na VPS;
+- `ADMIN_API_KEY` configurada;
+- `APP_PUBLIC_BASE_URL=https://bot.hrmmotos.com.br`;
+- API e worker online no PM2.
+
+### Incidente de retries contido
+
+Foram encontrados tres itens antigos da outbox em retry continuo:
+
+- item `5`: erro definitivo `400`, destinatario nao autorizado, mais de 10 mil
+  tentativas;
+- itens `7` e `8`: erro `401` com token expirado preservado no payload, mais de
+  4 mil tentativas em cada item;
+- os tres registros foram mantidos como `failed` e tiveram `next_retry_at`
+  movido para `2099-01-01`, interrompendo as chamadas sem apagar o historico.
+
+O codigo atual nao possui limite maximo de tentativas, reprocessa todo item
+`failed` e prioriza `payload.token` sobre a credencial atual da empresa. O
+payload da outbox nao deve armazenar tokens.
+
+## Sprint 3.1 - endurecimento da outbox
+
+Implementacao local concluida em 13 de setembro de 2026:
+
+1. novos payloads guardam somente `useEnvWhatsApp`, sem token ou Phone Number ID;
+2. a migration `010-outbox-retry-hardening.sql` limpa segredos historicos;
+3. cada envio resolve a credencial WhatsApp atual da empresa;
+4. erros `400/401/403` tornam-se terminais; `429`, rede e `5xx` usam retry;
+5. o estado `dead` encerra erros definitivos ou oito tentativas esgotadas;
+6. retries automaticos usam backoff exponencial, jitter e teto configuravel;
+7. a reabertura manual zera tentativas e registra contador e data de auditoria;
+8. a API administrativa omite payloads, leases e resposta bruta do provedor;
+9. o painel separa falhas temporarias e encerradas, com filtro e motivo terminal;
+10. migration aplicada duas vezes no PostgreSQL local para validar idempotencia.
+
+Validacao local concluida: 17 suites e 71 testes aprovados, JavaScript inline do
+painel valido e migration executada duas vezes com sucesso no PostgreSQL local.
+
+### Deploy pendente da Sprint 3.1
+
+O deploy automatizado executara
+`npm run db:migrate:outbox:retry-hardening` antes de reiniciar API e worker. A
+migration convertera os itens antigos `5`, `7` e `8` em `dead`, preservando o
+historico e removendo `token` e `phoneId` de todos os payloads existentes.
+
+Depois do deploy, confirmar no painel:
+
+1. contador `Encerradas` igual a pelo menos tres;
+2. itens `5`, `7` e `8` sem nova variacao de `attempt_count`;
+3. filtro `Encerradas` e botao `Reabrir e reenviar` visiveis;
+4. envio de uma mensagem real concluido como `sent` e entregue pela Meta.
+
+### Marco seguinte
+
+Depois da Sprint 3.1, retomar o hardening multiempresa da Sprint 5:
+
+- criptografar `empresas.whatsapp_token` em repouso;
+- adicionar unicidade para `phone_number_id`;
+- implementar auditoria administrativa e autorizacao por empresa;
+- implementar a rotina de saude, expiracao e alertas de credenciais registrada
+  em `FEATURES.md`.
+
 ## Multi-provedor de IA - 10 de setembro de 2026
 
 Implementada e validada localmente a ampliacao da rotacao de IA para:

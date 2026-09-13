@@ -357,6 +357,12 @@
       color: #ffd4da;
     }
 
+    .badge.status-dead {
+      border-color: rgba(255, 143, 82, 0.72);
+      background: rgba(83, 39, 18, 0.92);
+      color: #ffe2cf;
+    }
+
     .badge.status-processing {
       border-color: rgba(115, 194, 255, 0.7);
       background: rgba(23, 52, 78, 0.92);
@@ -574,6 +580,11 @@
     .outbox-global-item.failed {
       border-color: rgba(255, 135, 149, 0.6);
       background: linear-gradient(180deg, rgba(60, 22, 31, 0.92) 0%, rgba(33, 15, 20, 0.96) 100%);
+    }
+
+    .outbox-global-item.dead {
+      border-color: rgba(255, 143, 82, 0.62);
+      background: linear-gradient(180deg, rgba(67, 35, 18, 0.94) 0%, rgba(36, 21, 12, 0.97) 100%);
     }
 
     .outbox-global-item.processing {
@@ -1119,7 +1130,8 @@
 
     function describeQueueStatus(status) {
       const value = String(status || "").trim().toLowerCase();
-      if (value === "failed") return { label: "Falha na fila", className: "status-failed" };
+      if (value === "failed") return { label: "Falha temporária", className: "status-failed" };
+      if (value === "dead") return { label: "Encerrado", className: "status-dead" };
       if (value === "processing") return { label: "Em processamento", className: "status-processing" };
       if (value === "pending") return { label: "Aguardando envio", className: "status-pending" };
       if (value === "sent") return { label: "Enviado para Meta", className: "status-sent" };
@@ -1171,6 +1183,7 @@
           pending: Number(summary.pending || 0),
           processing: Number(summary.processing || 0),
           failed: Number(summary.failed || 0),
+          dead: Number(summary.dead || 0),
           sent: Number(summary.sent || 0),
         },
         items: items.map((item) => [
@@ -1180,6 +1193,8 @@
           item.contato_id || null,
           item.attempt_count || 0,
           item.next_retry_at || null,
+          item.terminal_reason || null,
+          item.manual_retry_count || 0,
         ]),
       });
     }
@@ -1211,7 +1226,8 @@
       summaryGrid.innerHTML = `
         <div class="summary-card"><strong>${Number(summary.total || 0)}</strong><span class="muted">Total</span></div>
         <div class="summary-card"><strong>${Number(summary.pending || 0)}</strong><span class="muted">Pendentes</span></div>
-        <div class="summary-card"><strong>${Number(summary.failed || 0)}</strong><span class="muted">Falhas</span></div>
+        <div class="summary-card"><strong>${Number(summary.failed || 0)}</strong><span class="muted">Falhas temporárias</span></div>
+        <div class="summary-card"><strong>${Number(summary.dead || 0)}</strong><span class="muted">Encerradas</span></div>
         <div class="summary-card"><strong>${Number(summary.processing || 0)}</strong><span class="muted">Processando</span></div>
         <div class="summary-card"><strong>${Number(summary.sent || 0)}</strong><span class="muted">Enviadas</span></div>
       `;
@@ -1220,6 +1236,7 @@
       const filters = [
         { id: "all", label: "Todas" },
         { id: "failed", label: "Falhas" },
+        { id: "dead", label: "Encerradas" },
         { id: "pending", label: "Pendentes" },
         { id: "processing", label: "Processando" },
         { id: "sent", label: "Enviadas" },
@@ -1290,6 +1307,7 @@
           <div><strong>${escapeHtml(item.content || "(sem conteúdo)")}</strong></div>
           <div class="muted" style="margin-top:4px">${escapeHtml(contatoLabel)} • ${escapeHtml(phone)}</div>
           ${item.last_error ? `<div class="error" style="margin-top:6px">${escapeHtml(item.last_error)}</div>` : ""}
+          ${item.terminal_reason ? `<div class="muted" style="margin-top:6px">Motivo terminal: ${escapeHtml(item.terminal_reason)}</div>` : ""}
         `;
 
         row.appendChild(renderOutboxStatusRow(item));
@@ -1302,7 +1320,7 @@
           created.textContent = `Criado ${createdAt}`;
           timeline.appendChild(created);
         }
-        if (nextRetryAt && String(item.status || "").toLowerCase() !== "sent") {
+        if (nextRetryAt && ["pending", "failed"].includes(String(item.status || "").toLowerCase())) {
           const retry = document.createElement("span");
           retry.className = "timeline-pill";
           retry.textContent = `Retry ${nextRetryAt}`;
@@ -1336,7 +1354,7 @@
         if (canRetryOutbox(item)) {
           const btnRetry = document.createElement("button");
           btnRetry.type = "button";
-          btnRetry.textContent = "Reenviar agora";
+          btnRetry.textContent = item.status === "dead" ? "Reabrir e reenviar" : "Reenviar agora";
           btnRetry.addEventListener("click", async () => {
             const empresaId = Number(empresaIdInput.value || 0);
             btnRetry.disabled = true;

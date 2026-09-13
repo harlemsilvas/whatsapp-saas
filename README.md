@@ -299,13 +299,15 @@ Para persistir mensagens de saída antes do envio à Graph API, aplique:
 ```bash
 npm run db:migrate:outbox
 npm run db:migrate:outbox:provider-status
+npm run db:migrate:outbox:retry-hardening
 npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
 npm run db:migrate:ai-multi-provider
 ```
 
-Isso cria a tabela `outbox_messages` e habilita a correlação dos estados da Meta
-entre outbox e mensagens de saída.
+Isso cria a tabela `outbox_messages`, habilita a correlação dos estados da Meta
+e aplica limite, classificação e backoff aos retries. Erros definitivos e itens
+que esgotam as tentativas ficam em `dead` até uma reabertura manual pelo painel.
 
 ### Reprocessar eventos com falha
 
@@ -343,6 +345,10 @@ Variáveis úteis:
 - `WEBHOOK_WORKER_BATCH_LIMIT`: tamanho do lote por ciclo
 - `WEBHOOK_WORKER_LEASE_SECONDS`: duração do lease por evento
 - `WEBHOOK_WORKER_STATUSES`: statuses considerados no worker, ex.: `failed` ou `failed,received`
+- `OUTBOX_MAX_ATTEMPTS`: máximo de tentativas automáticas, padrão `8`
+- `OUTBOX_RETRY_BASE_SECONDS`: espera inicial do backoff, padrão `30`
+- `OUTBOX_RETRY_MAX_SECONDS`: teto do backoff, padrão `3600`
+- `OUTBOX_RETRY_JITTER_RATIO`: variação aleatória do backoff, padrão `0.2`
 
 No deploy da VPS Ubuntu, a recomendação é rodar a API e o worker como processos separados no PM2.
 

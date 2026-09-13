@@ -147,10 +147,16 @@ describe("adminConversaController.listarOutbox", () => {
         pending: 1,
         processing: 0,
         failed: 1,
+        dead: 0,
         sent: 1,
       })),
       listByEmpresaId: jest.fn(async () => [
-        { id: 11, status: "pending" },
+        {
+          id: 11,
+          status: "pending",
+          payload_json: { token: "segredo" },
+          lease_token: "lease",
+        },
         { id: 12, status: "failed" },
       ]),
     }));
@@ -186,6 +192,7 @@ describe("adminConversaController.listarOutbox", () => {
           total: 3,
           pending: 1,
           failed: 1,
+          dead: 0,
           sent: 1,
         }),
         items: expect.arrayContaining([
@@ -194,6 +201,9 @@ describe("adminConversaController.listarOutbox", () => {
         ]),
       }),
     );
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.items[0]).not.toHaveProperty("payload_json");
+    expect(payload.items[0]).not.toHaveProperty("lease_token");
     expect(next).not.toHaveBeenCalled();
   });
 });

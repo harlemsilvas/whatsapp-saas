@@ -58,6 +58,7 @@ describe("outgoingMessageService idempotency", () => {
       expect.objectContaining({
         webhookEventId: 77,
         mensagemId: null,
+        options: { useEnvWhatsApp: false },
       }),
       mocks.client,
     );
