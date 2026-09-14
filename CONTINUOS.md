@@ -125,9 +125,12 @@ alertas deduplicados e webhook externo opcional. O painel exibe banner e
 detalhes sem revelar segredos. A migration `012-credential-health.sql` foi
 aplicada duas vezes no PostgreSQL local e 21 suites com 94 testes passaram.
 
-Deploy pendente. Depois do deploy, executar o dry-run na VPS e instalar o timer
-horario em `ops/systemd`. O catalogo automatico de modelos permanece como o
-proximo item de desenvolvimento em `FEATURES.md`.
+Deploy concluido em 14 de setembro de 2026 pelo GitHub Actions, release
+`6c5f9eb`. A migration foi aplicada, API e worker ficaram online e o token Meta
+permaneceu descriptografavel. O deploy passa a executar tambem um dry-run da
+rotina depois do healthcheck. Falta apenas instalar e ativar o timer horario em
+`ops/systemd` na VPS. O catalogo automatico de modelos permanece como o proximo
+item de desenvolvimento em `FEATURES.md`.
 
 ## Multi-provedor de IA - 10 de setembro de 2026
 

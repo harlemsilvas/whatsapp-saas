@@ -53,7 +53,7 @@ uma inferência curta com `NVIDIA_MODEL`.
 
 ## Rotina agendada de saúde das credenciais
 
-**Status:** implementado localmente em 13 de setembro de 2026; deploy pendente
+**Status:** implementado e implantado em 14 de setembro de 2026
 
 Criar um comando independente da API e do worker de mensagens para validar, em
 segundo plano, as credenciais criptografadas no banco. Na VPS, ele poderá ser

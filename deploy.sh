@@ -91,6 +91,9 @@ pm2 status
 echo ">> Validando descriptografia dos tokens WhatsApp..."
 npm run db:verify:whatsapp-token-encryption
 
+echo ">> Validando rotina de saúde das credenciais em modo dry-run..."
+npm run credentials:health -- --dry-run
+
 echo ">> Removendo tokens WhatsApp do campo legado após healthcheck..."
 npm run db:finalize:whatsapp-token-encryption
 
