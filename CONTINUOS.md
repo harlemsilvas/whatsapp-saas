@@ -128,9 +128,37 @@ aplicada duas vezes no PostgreSQL local e 21 suites com 94 testes passaram.
 Deploy concluido em 14 de setembro de 2026 pelo GitHub Actions, release
 `6c5f9eb`. A migration foi aplicada, API e worker ficaram online e o token Meta
 permaneceu descriptografavel. O deploy passa a executar tambem um dry-run da
-rotina depois do healthcheck. Falta apenas instalar e ativar o timer horario em
-`ops/systemd` na VPS. O catalogo automatico de modelos permanece como o proximo
-item de desenvolvimento em `FEATURES.md`.
+rotina depois do healthcheck. O timer horario de `ops/systemd` foi instalado e
+ativado na VPS em 14 de setembro de 2026. Duas execucoes persistidas terminaram
+com 3 credenciais verificadas, 3 validas, nenhum aviso, nenhuma invalida e
+nenhum erro.
+
+## Catalogo automatico de modelos - 14 de setembro de 2026
+
+Implementacao local concluida, ainda sem commit ou deploy:
+
+1. migration `013-ai-model-catalog.sql` cria catalogo por credencial e historico
+   resumido de sincronizacoes;
+2. Gemini usa seu catalogo nativo paginado, com capacidades e limites
+   declarados pelo provedor;
+3. NVIDIA e OpenAI usam `GET /v1/models`, com capacidades inferidas claramente
+   separadas dos metadados declarados;
+4. `npm run models:sync` suporta filtros, `--dry-run`, relatorio detalhado e
+   exportacao JSON protegida com modo `0600`;
+5. API administrativa lista modelos sempre no escopo da empresa e sincroniza
+   uma credencial especifica;
+6. painel permite atualizar o catalogo e trocar o modelo, preservando a
+   validacao por inferencia curta antes de salvar;
+7. timer `systemd` diario foi adicionado, mas ainda precisa ser instalado na
+   VPS depois do deploy;
+8. migration foi aplicada duas vezes no PostgreSQL local; 23 suites e 102
+   testes passaram, assim como sintaxe, unidades `systemd`, `git diff --check`
+   e auditoria npm sem vulnerabilidades;
+9. `npm run models:sync -- --dry-run` foi executado contra o banco local e
+   concluiu corretamente com zero credenciais cadastradas nesse ambiente.
+
+Proxima retomada: concluir a suite completa, revisar o diff e a seguranca,
+fazer commit/push, acompanhar a CI e instalar o timer diario na VPS.
 
 ## Multi-provedor de IA - 10 de setembro de 2026
 

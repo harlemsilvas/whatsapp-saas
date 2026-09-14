@@ -1,0 +1,18 @@
+[Unit]
+Description=WhatsApp SaaS AI model catalog synchronization
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=whatsapp
+Group=whatsapp
+WorkingDirectory=/home/whatsapp/app
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run models:sync
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

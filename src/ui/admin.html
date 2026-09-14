@@ -2168,8 +2168,9 @@
       }[item.status] || item.status;
     }
 
-    function renderAiCredentials(payload) {
+    function renderAiCredentials(payload, catalogPayload = {}) {
       const items = Array.isArray(payload?.items) ? payload.items : [];
+      const catalog = Array.isArray(catalogPayload?.items) ? catalogPayload.items : [];
       const fallbacks = Array.isArray(payload?.env_fallbacks) ? payload.env_fallbacks : [];
       const fallbackText = fallbacks.map((item) =>
         `${item.provider}: ${item.configured ? `${item.model} ativo` : "não configurado"}`
@@ -2184,6 +2185,22 @@
       }
 
       aiCredentialsListEl.innerHTML = items.map((item) => {
+        const credentialModels = catalog.filter((model) =>
+          Number(model.credential_id) === Number(item.id) && model.chat_compatible
+        );
+        const knownCurrentModel = credentialModels.some((model) => model.model_id === item.model);
+        const modelOptions = [
+          ...(knownCurrentModel ? [] : [{ model_id: item.model, inferred_capabilities: [] }]),
+          ...credentialModels,
+        ].map((model) => {
+          const inferred = Array.isArray(model.inferred_capabilities) && model.inferred_capabilities.length
+            ? " · capacidades inferidas"
+            : "";
+          return `<option value="${escapeHtml(model.model_id)}"${model.model_id === item.model ? " selected" : ""}>${escapeHtml(model.model_id + inferred)}</option>`;
+        }).join("");
+        const catalogInfo = credentialModels.length
+          ? `${credentialModels.length} modelo(s) de chat disponível(is)`
+          : "Catálogo ainda não sincronizado";
         const checkedAt = item.last_checked_at
           ? `Último teste: ${new Date(item.last_checked_at).toLocaleString()}`
           : "Ainda não testada";
@@ -2203,10 +2220,16 @@
                 <span class="muted">••••${escapeHtml(item.key_fingerprint)}</span>
               </div>
               <div class="muted">${escapeHtml(item.model)} · ${escapeHtml(item.api_style)} · falhas: ${Number(item.failure_count) || 0}</div>
+              <div class="muted" style="margin-top:4px">${escapeHtml(catalogInfo)}</div>
               <div class="muted" style="margin-top:4px">${escapeHtml(checkedAt + cooldown)}</div>
               ${error}
             </div>
             <div class="ai-credential-actions">
+              <label class="muted">Modelo
+                <select data-role="model" style="max-width:280px">${modelOptions}</select>
+              </label>
+              <button type="button" class="button-secondary" data-action="save-model">Usar modelo</button>
+              <button type="button" class="button-secondary" data-action="sync-models">Sincronizar catálogo</button>
               <label class="muted">Prioridade
                 <input data-role="priority" type="number" min="1" max="10000" value="${Number(item.priority) || 100}" style="width:84px" />
               </label>
@@ -2223,8 +2246,11 @@
       const empresaId = Number(empresaIdInput.value || 0);
       if (!empresaId) throw new Error("Empresa ID inválido");
       aiCredentialsListEl.innerHTML = '<div class="muted">Carregando credenciais...</div>';
-      const payload = await apiGet(apiUrl(`empresas/${empresaId}/ai/credentials`));
-      renderAiCredentials(payload);
+      const [payload, catalogPayload] = await Promise.all([
+        apiGet(apiUrl(`empresas/${empresaId}/ai/credentials`)),
+        apiGet(apiUrl(`empresas/${empresaId}/ai/models?available=true`)),
+      ]);
+      renderAiCredentials(payload, catalogPayload);
       return payload;
     }
 
@@ -2271,10 +2297,21 @@
       const action = button.dataset.action;
       if (action === "delete" && !window.confirm("Excluir esta chave de IA? Esta ação não pode ser desfeita.")) return;
       button.disabled = true;
-      setAiFeedback(action === "verify" ? "Testando chave no provedor..." : "Atualizando credencial...");
+      const pendingMessages = {
+        verify: "Testando chave no provedor...",
+        "sync-models": "Consultando os modelos disponíveis para esta chave...",
+        "save-model": "Validando e selecionando o modelo...",
+      };
+      setAiFeedback(pendingMessages[action] || "Atualizando credencial...");
       try {
         const basePath = `empresas/${empresaId}/ai/credentials/${credentialId}`;
         if (action === "verify") await apiPost(apiUrl(`${basePath}/verify`));
+        if (action === "sync-models") await apiPost(apiUrl(`${basePath}/models/sync`), {});
+        if (action === "save-model") {
+          const model = String(card.querySelector('[data-role="model"]')?.value || "").trim();
+          if (!model) throw new Error("Sincronize o catálogo e selecione um modelo.");
+          await apiPut(apiUrl(basePath), { model });
+        }
         if (action === "toggle") await apiPut(apiUrl(basePath), { enabled: button.dataset.enabled !== "true" });
         if (action === "save-priority") {
           const priority = Number(card.querySelector('[data-role="priority"]')?.value);
@@ -2282,7 +2319,12 @@
         }
         if (action === "delete") await apiDelete(apiUrl(basePath));
         await loadAiCredentials();
-        setAiFeedback(action === "verify" ? "Chave válida e disponível." : "Credencial atualizada.", "success");
+        const successMessages = {
+          verify: "Chave válida e disponível.",
+          "sync-models": "Catálogo de modelos atualizado.",
+          "save-model": "Modelo validado e selecionado.",
+        };
+        setAiFeedback(successMessages[action] || "Credencial atualizada.", "success");
       } catch (error) {
         setAiFeedback(error.message, "error");
         await loadAiCredentials().catch(() => {});

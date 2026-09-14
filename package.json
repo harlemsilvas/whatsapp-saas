@@ -25,7 +25,9 @@
     "db:migrate:ai-credentials": "node scripts/migrateAiProviderCredentials.js",
     "db:migrate:ai-multi-provider": "node scripts/migrateAiMultiProvider.js",
     "db:migrate:credential-health": "node scripts/migrateCredentialHealth.js",
+    "db:migrate:ai-model-catalog": "node scripts/migrateAiModelCatalog.js",
     "credentials:health": "node scripts/checkCredentialHealth.js",
+    "models:sync": "node scripts/syncAiModelCatalog.js",
     "webhook:reprocess": "node scripts/reprocessWebhookEvents.js",
     "test": "jest"
   },

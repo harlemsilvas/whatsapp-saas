@@ -2,7 +2,7 @@
 
 ## Catálogo automático de modelos de IA por credencial
 
-**Status:** backlog
+**Status:** implementado localmente em 14 de setembro de 2026; deploy pendente
 
 Automatizar a descoberta dos modelos disponíveis para cada credencial de IA,
 começando pela NVIDIA e evoluindo para Gemini e OpenAI.
@@ -18,7 +18,7 @@ começando pela NVIDIA e evoluindo para Gemini e OpenAI.
 - registrar a origem e a data da última atualização dos metadados;
 - nunca retornar, registrar ou exportar a API key.
 
-### Entregas previstas
+### Entregas implementadas
 
 1. Comando administrativo para sincronização manual e exportação JSON.
 2. Catálogo persistido ou armazenado em cache, separado por provedor.
@@ -27,6 +27,21 @@ começando pela NVIDIA e evoluindo para Gemini e OpenAI.
 5. Atualização periódica com tratamento de modelos adicionados ou removidos.
 6. Teste opcional de inferência curta para confirmar que o modelo listado está
    realmente operacional para a chave.
+
+A migration `013-ai-model-catalog.sql` persiste o catálogo por empresa e
+credencial, preserva modelos que deixaram de aparecer como indisponíveis e
+registra cada sincronização. O comando `npm run models:sync` consulta Gemini,
+NVIDIA e OpenAI, aceita filtros, modo `--dry-run` e exportação JSON com arquivo
+criado em modo `0600`.
+
+O painel permite sincronizar uma credencial e selecionar apenas modelos de chat
+disponíveis para ela. A troca continua executando a inferência curta já usada
+na validação de credenciais. A API nunca retorna a chave nem os metadados brutos
+do provedor.
+
+Um timer `systemd` diário mantém o catálogo atualizado. Capacidades informadas
+pelo Gemini são marcadas como declaradas; dados deduzidos dos IDs dos catálogos
+OpenAI-compatíveis são identificados separadamente como inferidos.
 
 ### Cuidados de implementação
 
@@ -137,5 +152,5 @@ separadamente a saúde da chave e a saúde da configuração do modelo.
 - banner e detalhes de saúde no painel administrativo;
 - unidades `systemd` para execução horária na VPS.
 
-O catálogo automático de modelos permanece no backlog e deverá reutilizar os
-adaptadores desta rotina.
+O catálogo automático foi implementado em 14 de setembro de 2026 e complementa
+o health check: descoberta não substitui o teste real do modelo selecionado.

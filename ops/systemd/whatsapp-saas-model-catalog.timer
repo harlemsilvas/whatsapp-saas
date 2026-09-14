@@ -1,0 +1,12 @@
+[Unit]
+Description=Synchronize WhatsApp SaaS AI model catalog daily
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1d
+RandomizedDelaySec=30min
+Persistent=true
+Unit=whatsapp-saas-model-catalog.service
+
+[Install]
+WantedBy=timers.target

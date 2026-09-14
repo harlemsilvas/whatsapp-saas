@@ -264,6 +264,10 @@ criptografadas com AES-256-GCM e exibidas apenas por impressão digital. A menor
 prioridade numérica é tentada primeiro; falhas de autenticação invalidam a
 chave e falhas transitórias ativam um cooldown antes do failover.
 
+Cada credencial também possui um catálogo próprio. Use `Sincronizar catálogo`
+para consultar os modelos liberados para aquela chave e `Usar modelo` para
+validar e selecionar uma opção compatível com chat.
+
 A ordem padrão é Gemini (`10`), NVIDIA (`20`) e OpenAI (`30`). As prioridades
 podem ser alteradas no painel sem recadastrar a chave.
 
@@ -307,6 +311,8 @@ npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
 npm run db:migrate:ai-multi-provider
 npm run db:migrate:tenant-security
+npm run db:migrate:credential-health
+npm run db:migrate:ai-model-catalog
 ```
 
 Isso cria a tabela `outbox_messages`, habilita a correlação dos estados da Meta
@@ -335,6 +341,22 @@ O `deploy.sh` executa essa sequência automaticamente e só finaliza depois do
 healthcheck e da verificação criptográfica. `CREDENTIALS_ENCRYPTION_KEY` deve
 permanecer estável; perdê-la impede descriptografar tokens WhatsApp e chaves de
 IA.
+
+### Catálogo de modelos de IA
+
+Sincronize todas as credenciais habilitadas sem expor suas chaves:
+
+```bash
+npm run models:sync
+npm run models:sync -- --dry-run --provider=gemini
+npm run models:sync -- --empresa-id=1 --credential-id=1
+npm run models:sync -- --empresa-id=1 --include-models --output=model-catalog.json
+```
+
+Por padrão, a saída resume quantidades. `--include-models` inclui os modelos no
+JSON exibido; `--output` grava o relatório com permissão `0600`. O endpoint
+administrativo `GET /api/empresas/:id/ai/models` oferece os filtros
+`credentialId`, `provider`, `available` e `chatCompatible`.
 
 ### Reprocessar eventos com falha
 

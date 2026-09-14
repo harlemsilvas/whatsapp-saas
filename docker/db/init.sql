@@ -263,12 +263,66 @@ CREATE TABLE ai_provider_credentials (
   last_error TEXT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (id, empresa_id),
   UNIQUE (empresa_id, provider, label),
   UNIQUE (empresa_id, provider, key_fingerprint)
 );
 
 CREATE INDEX ix_ai_credentials_empresa_priority
   ON ai_provider_credentials (empresa_id, enabled, priority, id);
+
+CREATE TABLE ai_credential_models (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  credential_id BIGINT NOT NULL REFERENCES ai_provider_credentials(id) ON DELETE CASCADE,
+  provider VARCHAR(30) NOT NULL CHECK (provider IN ('gemini', 'nvidia', 'openai')),
+  model_id VARCHAR(200) NOT NULL,
+  display_name VARCHAR(200) NULL,
+  description TEXT NULL,
+  owned_by VARCHAR(120) NULL,
+  capabilities TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  declared_capabilities TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  inferred_capabilities TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  endpoints TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  input_token_limit INT NULL,
+  output_token_limit INT NULL,
+  context_window INT NULL,
+  chat_compatible BOOLEAN NOT NULL DEFAULT FALSE,
+  available BOOLEAN NOT NULL DEFAULT TRUE,
+  metadata_source VARCHAR(40) NOT NULL DEFAULT 'provider_catalog',
+  raw_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  unavailable_since TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (credential_id, model_id),
+  FOREIGN KEY (credential_id, empresa_id)
+    REFERENCES ai_provider_credentials(id, empresa_id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_ai_models_tenant_provider
+  ON ai_credential_models (empresa_id, provider, available, chat_compatible, model_id);
+
+CREATE TABLE ai_model_catalog_sync_runs (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id INT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  credential_id BIGINT NULL REFERENCES ai_provider_credentials(id) ON DELETE SET NULL,
+  provider VARCHAR(30) NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running', 'completed', 'failed')),
+  dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+  discovered_count INT NOT NULL DEFAULT 0,
+  available_count INT NOT NULL DEFAULT 0,
+  unavailable_count INT NOT NULL DEFAULT 0,
+  error_code VARCHAR(80) NULL,
+  error_message TEXT NULL,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ NULL
+);
+
+CREATE INDEX ix_ai_model_sync_started
+  ON ai_model_catalog_sync_runs (started_at DESC);
 
 CREATE TABLE credential_health_runs (
   id BIGSERIAL PRIMARY KEY,

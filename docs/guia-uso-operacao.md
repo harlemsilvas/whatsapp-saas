@@ -103,6 +103,9 @@ barra de enderecos e usa a chave no header `x-api-key` nas chamadas seguintes.
    bootstrap e manutenção de superadmin.
 9. Consulte `Auditoria recente` para conferir alterações bem-sucedidas. Corpos
    de requisição, tokens e chaves nunca são copiados para o log de auditoria.
+10. Em `Inteligência artificial`, use `Sincronizar catálogo` na chave desejada.
+    Escolha um modelo de chat retornado e clique em `Usar modelo`; o sistema faz
+    uma inferência curta antes de efetivar a troca.
 
 ## Atualizar o token da Meta
 
@@ -362,6 +365,44 @@ O painel mostra alertas persistentes. Configure
 `CREDENTIAL_HEALTH_ALERT_WEBHOOK_URL` para receber também um POST JSON em canal
 independente do WhatsApp. O payload contém empresa, provedor, motivo e prazo,
 mas nunca token, chave ou fingerprint.
+
+### Sincronizar o catálogo de modelos
+
+Depois do deploy e da migration `013`, faça uma descoberta sem gravar para
+validar o acesso aos provedores:
+
+```bash
+cd /home/whatsapp/app
+npm run models:sync -- --dry-run
+```
+
+Persistindo o catálogo de todas as credenciais habilitadas:
+
+```bash
+npm run models:sync
+```
+
+Para inspecionar uma empresa e gerar um arquivo detalhado sem incluir chaves:
+
+```bash
+npm run models:sync -- --empresa-id=1 --include-models --output=/tmp/model-catalog.json
+```
+
+Instale o timer diário após confirmar a execução manual:
+
+```bash
+sudo cp ops/systemd/whatsapp-saas-model-catalog.service /etc/systemd/system/
+sudo cp ops/systemd/whatsapp-saas-model-catalog.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now whatsapp-saas-model-catalog.timer
+sudo systemctl start whatsapp-saas-model-catalog.service
+sudo systemctl status whatsapp-saas-model-catalog.timer --no-pager
+sudo journalctl -u whatsapp-saas-model-catalog.service -n 100 --no-pager
+```
+
+O timer consulta apenas catálogos. A seleção de um modelo no painel continua
+validando uma inferência curta, pois aparecer em `/models` não garante suporte
+ao endpoint usado pelo atendimento.
 
 Se o painel exibir `CORS origin nao permitida`, confirme que
 `CORS_ALLOWED_ORIGINS` contem exatamente a origem do navegador, sem barra no
