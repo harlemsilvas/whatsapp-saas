@@ -1,5 +1,9 @@
 # Continuidade entre whatsapp-saas e Paylo.IA
 
+Retomada obrigatoria: leia primeiro `CLAUDE.md` e depois este documento. A
+sequencia completa de leitura e validacao inicial esta definida em
+`CLAUDE.md`.
+
 Data da decisão: 7 de setembro de 2026.
 
 ## Fechamento do fluxo ponta a ponta - 12 de setembro de 2026
@@ -114,8 +118,16 @@ Validacoes operacionais seguintes:
 
 ### Marco seguinte
 
-Implementar a rotina de saude, expiracao e alertas de credenciais registrada
-em `FEATURES.md`.
+Rotina de saude, expiracao e alertas implementada localmente em 13 de setembro
+de 2026. O comando independente valida Meta e IA com trava PostgreSQL,
+`--dry-run`, concorrencia limitada, confirmacao de duas falhas de autenticacao,
+alertas deduplicados e webhook externo opcional. O painel exibe banner e
+detalhes sem revelar segredos. A migration `012-credential-health.sql` foi
+aplicada duas vezes no PostgreSQL local e 21 suites com 94 testes passaram.
+
+Deploy pendente. Depois do deploy, executar o dry-run na VPS e instalar o timer
+horario em `ops/systemd`. O catalogo automatico de modelos permanece como o
+proximo item de desenvolvimento em `FEATURES.md`.
 
 ## Multi-provedor de IA - 10 de setembro de 2026
 

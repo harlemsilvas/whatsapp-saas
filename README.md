@@ -1,5 +1,8 @@
 # whatsapp-saas
 
+Antes de retomar desenvolvimento, manutencao ou deploy, siga a leitura inicial
+obrigatoria definida em [`CLAUDE.md`](CLAUDE.md).
+
 Backend Node/Express + PostgreSQL para automação de WhatsApp Cloud API (Meta).
 
 ## Rodar a API
@@ -478,3 +481,29 @@ curl -sS -X POST "http://localhost:3000/api/admin/empresas/1/conversas/1/send" \
 Reutilize a mesma `Idempotency-Key` ao repetir uma requisição cujo resultado é
 incerto. A API retornará a mensagem/outbox já criada sem duplicar o envio. Se o
 header não for informado, a API gera uma chave nova e a devolve em `command_id`.
+
+## Saúde das credenciais
+
+A migration `012-credential-health.sql` adiciona estado de saúde do token Meta,
+histórico de execuções e alertas deduplicados. Execute manualmente sem alterar
+estado:
+
+```bash
+npm run db:migrate:credential-health
+npm run credentials:health -- --dry-run
+```
+
+Para executar e persistir o resultado:
+
+```bash
+npm run credentials:health
+```
+
+O comando valida credenciais criptografadas por empresa, nunca imprime os
+segredos e usa uma trava PostgreSQL para impedir sobreposição. Duas falhas de
+autenticação consecutivas são exigidas antes de desativar uma chave de IA.
+Alertas permanecem visíveis no painel mesmo sem webhook externo.
+
+Variáveis opcionais: `META_APP_ID`, `CREDENTIAL_HEALTH_TIMEOUT_MS`,
+`CREDENTIAL_HEALTH_CONCURRENCY`, `CREDENTIAL_HEALTH_FAILURE_THRESHOLD`,
+`CREDENTIAL_HEALTH_ALERT_DAYS` e `CREDENTIAL_HEALTH_ALERT_WEBHOOK_URL`.

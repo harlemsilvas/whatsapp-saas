@@ -53,7 +53,7 @@ uma inferência curta com `NVIDIA_MODEL`.
 
 ## Rotina agendada de saúde das credenciais
 
-**Status:** backlog, implementar junto com o catálogo automático de modelos
+**Status:** implementado localmente em 13 de setembro de 2026; deploy pendente
 
 Criar um comando independente da API e do worker de mensagens para validar, em
 segundo plano, as credenciais criptografadas no banco. Na VPS, ele poderá ser
@@ -122,3 +122,20 @@ O catálogo e a rotina de saúde devem compartilhar adaptadores por provedor. A
 sincronização descobre IDs e capacidades; o health check confirma credencial,
 permissão e funcionamento real do modelo selecionado. O painel deverá mostrar
 separadamente a saúde da chave e a saúde da configuração do modelo.
+
+### Entrega implementada
+
+- comando independente `npm run credentials:health`, com `--dry-run`, timeout,
+  concorrência limitada e trava PostgreSQL;
+- validação de Gemini, NVIDIA, OpenAI e token WhatsApp armazenado por empresa;
+- duas falhas de autenticação consecutivas antes de desativar uma chave de IA;
+- classificação separada para autenticação, modelo, limite e erro transitório;
+- histórico resumido de execuções e alertas persistentes deduplicados;
+- marcos de expiração configuráveis e consulta opcional via `debug_token` da
+  Meta quando `META_APP_ID` estiver disponível;
+- webhook externo opcional, sem segredos, e confirmação de recuperação;
+- banner e detalhes de saúde no painel administrativo;
+- unidades `systemd` para execução horária na VPS.
+
+O catálogo automático de modelos permanece no backlog e deverá reutilizar os
+adaptadores desta rotina.

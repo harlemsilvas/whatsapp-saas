@@ -306,6 +306,14 @@ NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 CREDENTIALS_ENCRYPTION_KEY=CHAVE_DE_32_BYTES_EM_BASE64
 REQUIRE_CREDENTIALS_ENCRYPTION_KEY=true
 AI_MAX_CREDENTIAL_ATTEMPTS=3
+CREDENTIAL_HEALTH_TIMEOUT_MS=15000
+CREDENTIAL_HEALTH_CONCURRENCY=2
+CREDENTIAL_HEALTH_FAILURE_THRESHOLD=2
+CREDENTIAL_HEALTH_ALERT_DAYS=30,15,7,3,1
+# Opcional para consultar a expiração pelo debug_token da Meta
+META_APP_ID=ID_DO_APLICATIVO_META
+# Canal externo opcional; alertas também permanecem no painel
+CREDENTIAL_HEALTH_ALERT_WEBHOOK_URL=
 WEBHOOK_WORKER_STATUSES=failed
 OUTBOX_MAX_ATTEMPTS=8
 OUTBOX_RETRY_BASE_SECONDS=30
@@ -328,6 +336,32 @@ fallback enquanto a migracao para as chaves por empresa e validada.
 
 Nao execute `source .env`: valores com espacos podem ser interpretados como
 comandos pelo shell. A API e o worker carregam o arquivo com `dotenv`.
+
+### Agendar a saúde das credenciais
+
+Depois do deploy, valide primeiro sem persistir alterações:
+
+```bash
+cd /home/whatsapp/app
+npm run credentials:health -- --dry-run
+```
+
+Instale o timer horário versionado no repositório:
+
+```bash
+sudo cp ops/systemd/whatsapp-saas-credential-health.service /etc/systemd/system/
+sudo cp ops/systemd/whatsapp-saas-credential-health.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now whatsapp-saas-credential-health.timer
+sudo systemctl start whatsapp-saas-credential-health.service
+sudo systemctl status whatsapp-saas-credential-health.timer --no-pager
+sudo journalctl -u whatsapp-saas-credential-health.service -n 100 --no-pager
+```
+
+O painel mostra alertas persistentes. Configure
+`CREDENTIAL_HEALTH_ALERT_WEBHOOK_URL` para receber também um POST JSON em canal
+independente do WhatsApp. O payload contém empresa, provedor, motivo e prazo,
+mas nunca token, chave ou fingerprint.
 
 Se o painel exibir `CORS origin nao permitida`, confirme que
 `CORS_ALLOWED_ORIGINS` contem exatamente a origem do navegador, sem barra no

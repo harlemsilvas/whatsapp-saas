@@ -14,6 +14,16 @@ CREATE TABLE empresas (
   whatsapp_token_fingerprint VARCHAR(16) NULL,
   whatsapp_token_rotated_at TIMESTAMPTZ NULL,
   whatsapp_token_revoked_at TIMESTAMPTZ NULL,
+  whatsapp_token_status VARCHAR(20) NOT NULL DEFAULT 'untested',
+  whatsapp_token_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  whatsapp_token_failure_count INT NOT NULL DEFAULT 0,
+  whatsapp_token_auth_failure_count INT NOT NULL DEFAULT 0,
+  whatsapp_token_last_checked_at TIMESTAMPTZ NULL,
+  whatsapp_token_last_valid_at TIMESTAMPTZ NULL,
+  whatsapp_token_last_error_code VARCHAR(80) NULL,
+  whatsapp_token_last_error TEXT NULL,
+  whatsapp_token_expires_at TIMESTAMPTZ NULL,
+  whatsapp_token_expiry_source VARCHAR(40) NULL,
   phone_number_id VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,6 +43,9 @@ ALTER TABLE empresas ADD CONSTRAINT ck_empresas_whatsapp_token_encrypted
       AND whatsapp_token_auth_tag IS NOT NULL
       AND whatsapp_token_fingerprint IS NOT NULL)
   );
+
+ALTER TABLE empresas ADD CONSTRAINT ck_empresas_whatsapp_token_status
+  CHECK (whatsapp_token_status IN ('untested', 'valid', 'warning', 'invalid', 'revoked'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_empresas_phone_number_id
   ON empresas (phone_number_id)
@@ -243,6 +256,7 @@ CREATE TABLE ai_provider_credentials (
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   status VARCHAR(20) NOT NULL DEFAULT 'untested' CHECK (status IN ('untested', 'valid', 'invalid', 'cooldown')),
   failure_count INT NOT NULL DEFAULT 0,
+  health_auth_failure_count INT NOT NULL DEFAULT 0,
   cooldown_until TIMESTAMPTZ NULL,
   last_checked_at TIMESTAMPTZ NULL,
   last_error_code VARCHAR(80) NULL,
@@ -255,6 +269,50 @@ CREATE TABLE ai_provider_credentials (
 
 CREATE INDEX ix_ai_credentials_empresa_priority
   ON ai_provider_credentials (empresa_id, enabled, priority, id);
+
+CREATE TABLE credential_health_runs (
+  id BIGSERIAL PRIMARY KEY,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+  dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+  checked_count INT NOT NULL DEFAULT 0,
+  valid_count INT NOT NULL DEFAULT 0,
+  warning_count INT NOT NULL DEFAULT 0,
+  invalid_count INT NOT NULL DEFAULT 0,
+  error_count INT NOT NULL DEFAULT 0,
+  summary JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE credential_health_alerts (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id INT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  credential_type VARCHAR(20) NOT NULL CHECK (credential_type IN ('whatsapp', 'ai')),
+  credential_id BIGINT NULL,
+  provider VARCHAR(30) NOT NULL,
+  alert_code VARCHAR(80) NOT NULL,
+  severity VARCHAR(20) NOT NULL DEFAULT 'warning' CHECK (severity IN ('info', 'warning', 'critical')),
+  title VARCHAR(160) NOT NULL,
+  message TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'resolved')),
+  first_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_notified_at TIMESTAMPTZ NULL,
+  notification_count INT NOT NULL DEFAULT 0,
+  resolved_at TIMESTAMPTZ NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE UNIQUE INDEX ux_credential_health_alert_active
+  ON credential_health_alerts (
+    empresa_id, credential_type, COALESCE(credential_id, 0), provider, alert_code
+  ) WHERE status = 'active';
+
+CREATE INDEX ix_credential_health_alert_empresa
+  ON credential_health_alerts (empresa_id, status, last_detected_at DESC);
+
+CREATE INDEX ix_credential_health_runs_started
+  ON credential_health_runs (started_at DESC);
 
 -- =========================
 -- DADOS INICIAIS

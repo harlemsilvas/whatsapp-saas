@@ -113,8 +113,32 @@ exports.update = async (
          WHEN $5::text IS NOT NULL THEN NOW()
          ELSE whatsapp_token_rotated_at
        END,
+       whatsapp_token_status = CASE
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN 'untested'
+         ELSE whatsapp_token_status
+       END,
+       whatsapp_token_enabled = CASE
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN TRUE
+         ELSE whatsapp_token_enabled
+       END,
+       whatsapp_token_failure_count = CASE
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN 0
+         ELSE whatsapp_token_failure_count
+       END,
+       whatsapp_token_auth_failure_count = CASE
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN 0
+         ELSE whatsapp_token_auth_failure_count
+       END,
+       whatsapp_token_last_error_code = CASE
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN NULL
+         ELSE whatsapp_token_last_error_code
+       END,
+       whatsapp_token_last_error = CASE
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN NULL
+         ELSE whatsapp_token_last_error
+       END,
        whatsapp_token_revoked_at = CASE
-         WHEN $5::text IS NOT NULL THEN NULL
+         WHEN $4::text IS NOT NULL OR $5::text IS NOT NULL THEN NULL
          ELSE whatsapp_token_revoked_at
        END
      WHERE id = $1
@@ -141,6 +165,11 @@ exports.revokeWhatsappToken = async (empresaId) => {
          whatsapp_token_iv = NULL,
          whatsapp_token_auth_tag = NULL,
          whatsapp_token_fingerprint = NULL,
+         whatsapp_token_status = 'revoked',
+         whatsapp_token_enabled = FALSE,
+         whatsapp_token_last_checked_at = NOW(),
+         whatsapp_token_last_error_code = 'revoked_by_admin',
+         whatsapp_token_last_error = 'Token revogado administrativamente',
          whatsapp_token_revoked_at = NOW()
      WHERE id = $1
      RETURNING *`,

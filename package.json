@@ -24,6 +24,8 @@
     "db:migrate:message-provider-status": "node scripts/migrateMessageProviderStatus.js",
     "db:migrate:ai-credentials": "node scripts/migrateAiProviderCredentials.js",
     "db:migrate:ai-multi-provider": "node scripts/migrateAiMultiProvider.js",
+    "db:migrate:credential-health": "node scripts/migrateCredentialHealth.js",
+    "credentials:health": "node scripts/checkCredentialHealth.js",
     "webhook:reprocess": "node scripts/reprocessWebhookEvents.js",
     "test": "jest"
   },

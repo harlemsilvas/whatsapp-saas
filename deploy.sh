@@ -60,6 +60,7 @@ npm run db:migrate:message-provider-status
 npm run db:migrate:ai-credentials
 npm run db:migrate:ai-multi-provider
 npm run db:migrate:tenant-security
+npm run db:migrate:credential-health
 
 command -v pm2 >/dev/null 2>&1 || { echo "pm2 nao encontrado no PATH"; exit 1; }
 mkdir -p /home/whatsapp/logs

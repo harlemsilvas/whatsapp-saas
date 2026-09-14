@@ -3,7 +3,7 @@ const db = require("../config/database");
 const PUBLIC_COLUMNS = `
   id, empresa_id, provider, label, key_fingerprint, model, api_style, base_url,
   priority, enabled, status, failure_count, cooldown_until, last_checked_at,
-  last_error_code, last_error, created_at, updated_at
+  health_auth_failure_count, last_error_code, last_error, created_at, updated_at
 `;
 
 exports.listPublic = async (empresaId) => {
@@ -123,6 +123,7 @@ exports.markValid = async (empresaId, credentialId) => {
   const result = await db.query(
     `UPDATE ai_provider_credentials
      SET status = 'valid', failure_count = 0, cooldown_until = NULL,
+         health_auth_failure_count = 0,
          last_checked_at = NOW(), last_error_code = NULL, last_error = NULL,
          updated_at = NOW()
      WHERE empresa_id = $1 AND id = $2
@@ -156,6 +157,48 @@ exports.markFailure = async (
       errorCode,
       String(errorMessage || "").slice(0, 500) || null,
       Math.max(30, Number(cooldownSeconds) || 60),
+    ],
+  );
+  return result.rows[0] || null;
+};
+
+exports.markHealthFailure = async (
+  empresaId,
+  credentialId,
+  {
+    status = "cooldown",
+    errorCode = null,
+    errorMessage = null,
+    cooldownSeconds = 300,
+    disable = false,
+    authFailure = false,
+  } = {},
+) => {
+  const result = await db.query(
+    `UPDATE ai_provider_credentials
+     SET status = $3,
+         enabled = CASE WHEN $7 THEN FALSE ELSE enabled END,
+         failure_count = failure_count + 1,
+         health_auth_failure_count = CASE
+           WHEN $8 THEN health_auth_failure_count + 1 ELSE 0
+         END,
+         cooldown_until = CASE
+           WHEN $3 = 'cooldown' THEN NOW() + make_interval(secs => $6)
+           ELSE NULL
+         END,
+         last_checked_at = NOW(), last_error_code = $4, last_error = $5,
+         updated_at = NOW()
+     WHERE empresa_id = $1 AND id = $2
+     RETURNING ${PUBLIC_COLUMNS}`,
+    [
+      empresaId,
+      credentialId,
+      status,
+      errorCode,
+      String(errorMessage || "").slice(0, 500) || null,
+      Math.max(30, Number(cooldownSeconds) || 300),
+      disable,
+      authFailure,
     ],
   );
   return result.rows[0] || null;

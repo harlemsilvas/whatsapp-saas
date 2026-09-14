@@ -131,6 +131,11 @@ async function deliverOutboxMessage(
   const empresa = await Empresa.findById(claimed.empresa_id);
 
   try {
+    if (!useEnvWhatsApp && empresa?.whatsapp_token_enabled === false) {
+      const error = new Error("Token WhatsApp desativado pela rotina de saúde");
+      error.response = { status: 401, data: { error: { code: "credential_disabled" } } };
+      throw error;
+    }
     const options = {};
     if (!useEnvWhatsApp) {
       options.token = empresa?.whatsapp_token || null;
