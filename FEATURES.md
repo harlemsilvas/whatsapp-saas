@@ -2,7 +2,7 @@
 
 ## Catálogo automático de modelos de IA por credencial
 
-**Status:** implementado localmente em 14 de setembro de 2026; deploy pendente
+**Status:** implementado e implantado em 14 de setembro de 2026
 
 Automatizar a descoberta dos modelos disponíveis para cada credencial de IA,
 começando pela NVIDIA e evoluindo para Gemini e OpenAI.
